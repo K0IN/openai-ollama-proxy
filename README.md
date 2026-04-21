@@ -80,4 +80,7 @@ Using the proxy as ollama cli endpoint (make sure ollama is not running on the s
 
 ```bash
 OLLAMA_HOST=http://localhost:11434 ollama run qwen3:latest "hello"
+
+# or with docker
+docker run -it --entrypoint ollama -e OLLAMA_HOST="http://host.docker.internal:11434" docker.io/ollama/ollama run qwen:latest
 ```

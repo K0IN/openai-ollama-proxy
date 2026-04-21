@@ -1,0 +1,169 @@
+### openai-ollama-proxy API quick tests
+### Requires VS Code REST Client extension
+### Adjust @host if running on a different address
+
+@host = http://localhost:11434
+
+### Health check (HEAD)
+HEAD {{host}}/ HTTP/1.1
+
+###
+
+### Health check (GET)
+GET {{host}}/ HTTP/1.1
+
+###
+
+### Version
+GET {{host}}/api/version HTTP/1.1
+
+###
+
+### List models (tags)
+GET {{host}}/api/tags HTTP/1.1
+
+###
+
+### Running models (ps)
+GET {{host}}/api/ps HTTP/1.1
+
+###
+
+### Show model info
+POST {{host}}/api/show HTTP/1.1
+Content-Type: application/json
+
+{
+  "model": "qwen3:latest"
+}
+
+###
+
+### Chat (non-streaming)
+POST {{host}}/api/chat HTTP/1.1
+Content-Type: application/json
+
+{
+  "model": "qwen3:latest",
+  "messages": [
+    {"role": "user", "content": "Say hello in one sentence."}
+  ],
+  "stream": false
+}
+
+###
+
+### Chat (streaming, default)
+POST {{host}}/api/chat HTTP/1.1
+Content-Type: application/json
+
+{
+  "model": "qwen3:latest",
+  "messages": [
+    {"role": "user", "content": "What is 2+2? Answer briefly."}
+  ]
+}
+
+###
+
+### Chat with thinking enabled
+POST {{host}}/api/chat HTTP/1.1
+Content-Type: application/json
+
+{
+  "model": "qwen3:latest",
+  "messages": [
+    {"role": "user", "content": "What is the square root of 144? Think step by step."}
+  ],
+  "stream": false,
+  "think": true
+}
+
+###
+
+### Chat with options (temperature, max tokens)
+POST {{host}}/api/chat HTTP/1.1
+Content-Type: application/json
+
+{
+  "model": "qwen3:latest",
+  "messages": [
+    {"role": "user", "content": "Write a haiku about proxies."}
+  ],
+  "stream": false,
+  "options": {
+    "temperature": 0.9,
+    "num_predict": 50,
+    "top_p": 0.95
+  }
+}
+
+###
+
+### Chat with JSON format
+POST {{host}}/api/chat HTTP/1.1
+Content-Type: application/json
+
+{
+  "model": "qwen3:latest",
+  "messages": [
+    {"role": "user", "content": "Return a JSON object with keys 'name' and 'age' for a fictional character."}
+  ],
+  "stream": false,
+  "format": "json"
+}
+
+###
+
+### Chat with tool calling
+POST {{host}}/api/chat HTTP/1.1
+Content-Type: application/json
+
+{
+  "model": "qwen3:latest",
+  "messages": [
+    {"role": "user", "content": "What is the weather in San Francisco?"}
+  ],
+  "stream": false,
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "get_current_weather",
+        "description": "Get the current weather for a location",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "location": {
+              "type": "string",
+              "description": "The city and state, e.g. San Francisco, CA"
+            }
+          },
+          "required": ["location"]
+        }
+      }
+    }
+  ]
+}
+
+###
+
+### Embed (new endpoint)
+POST {{host}}/api/embed HTTP/1.1
+Content-Type: application/json
+
+{
+  "model": "qwen3:latest",
+  "input": "Hello, world!"
+}
+
+###
+
+### Embeddings (legacy endpoint)
+POST {{host}}/api/embeddings HTTP/1.1
+Content-Type: application/json
+
+{
+  "model": "qwen3:latest",
+  "prompt": "Hello, world!"
+}

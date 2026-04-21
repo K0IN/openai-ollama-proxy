@@ -1,8 +1,8 @@
-package main
+package types
 
 import "encoding/json"
 
-// ─── Ollama types ───
+// Ollama types.
 
 type OllamaChatRequest struct {
 	Model     string          `json:"model"`
@@ -97,7 +97,7 @@ type OllamaGenerateResponse struct {
 type OllamaEmbedRequest struct {
 	Model  string          `json:"model"`
 	Input  json.RawMessage `json:"input"`
-	Prompt string          `json:"prompt,omitempty"` // deprecated /api/embeddings
+	Prompt string          `json:"prompt,omitempty"`
 }
 
 type OllamaPullRequest struct {
@@ -124,7 +124,6 @@ type OllamaEmbedResponse struct {
 	PromptEvalCount int         `json:"prompt_eval_count,omitempty"`
 }
 
-// deprecated /api/embeddings response
 type OllamaEmbeddingsResponse struct {
 	Embedding []float64 `json:"embedding"`
 }
@@ -183,28 +182,26 @@ type OllamaPsModel struct {
 	SizeVRAM  int64              `json:"size_vram"`
 }
 
-// ─── OpenAI types ───
+// OpenAI types.
 
 type OpenAIChatRequest struct {
-	Model            string                `json:"model"`
-	Messages         []OpenAIMessage       `json:"messages"`
-	Tools            json.RawMessage       `json:"tools,omitempty"`
-	Stream           bool                  `json:"stream"`
-	Temperature      *float64              `json:"temperature,omitempty"`
-	TopP             *float64              `json:"top_p,omitempty"`
-	Seed             *int                  `json:"seed,omitempty"`
-	MaxTokens        *int                  `json:"max_tokens,omitempty"`
-	Stop             []string              `json:"stop,omitempty"`
-	FrequencyPenalty *float64              `json:"frequency_penalty,omitempty"`
-	PresencePenalty  *float64              `json:"presence_penalty,omitempty"`
-	ResponseFormat   *OpenAIResponseFormat `json:"response_format,omitempty"`
-	StreamOptions    *OpenAIStreamOptions  `json:"stream_options,omitempty"`
-
-	// vLLM extra params (flattened into body)
-	TopK               *int           `json:"top_k,omitempty"`
-	MinP               *float64       `json:"min_p,omitempty"`
-	RepetitionPenalty  *float64       `json:"repetition_penalty,omitempty"`
-	ChatTemplateKwargs map[string]any `json:"chat_template_kwargs,omitempty"`
+	Model              string                `json:"model"`
+	Messages           []OpenAIMessage       `json:"messages"`
+	Tools              json.RawMessage       `json:"tools,omitempty"`
+	Stream             bool                  `json:"stream"`
+	Temperature        *float64              `json:"temperature,omitempty"`
+	TopP               *float64              `json:"top_p,omitempty"`
+	Seed               *int                  `json:"seed,omitempty"`
+	MaxTokens          *int                  `json:"max_tokens,omitempty"`
+	Stop               []string              `json:"stop,omitempty"`
+	FrequencyPenalty   *float64              `json:"frequency_penalty,omitempty"`
+	PresencePenalty    *float64              `json:"presence_penalty,omitempty"`
+	ResponseFormat     *OpenAIResponseFormat `json:"response_format,omitempty"`
+	StreamOptions      *OpenAIStreamOptions  `json:"stream_options,omitempty"`
+	TopK               *int                  `json:"top_k,omitempty"`
+	MinP               *float64              `json:"min_p,omitempty"`
+	RepetitionPenalty  *float64              `json:"repetition_penalty,omitempty"`
+	ChatTemplateKwargs map[string]any        `json:"chat_template_kwargs,omitempty"`
 }
 
 type OpenAIStreamOptions struct {
@@ -218,7 +215,7 @@ type OpenAIResponseFormat struct {
 
 type OpenAIMessage struct {
 	Role       string           `json:"role"`
-	Content    json.RawMessage  `json:"content"` // string or array of content parts
+	Content    json.RawMessage  `json:"content"`
 	ToolCalls  []OpenAIToolCall `json:"tool_calls,omitempty"`
 	ToolCallID string           `json:"tool_call_id,omitempty"`
 }
@@ -287,8 +284,6 @@ type OpenAIUsage struct {
 	CompletionTokens int `json:"completion_tokens"`
 	TotalTokens      int `json:"total_tokens"`
 }
-
-// ─── OpenAI Embeddings types ───
 
 type OpenAIEmbedRequest struct {
 	Model string          `json:"model"`
