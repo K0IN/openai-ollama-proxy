@@ -7,7 +7,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - vllm-cache:/root/.cache/huggingface
+      - ~/.vllm-cache:/root/.cache/huggingface
     environment:
       - VLLM_API_KEY=${VLLM_API_KEY:-localdev}
       - HF_TOKEN=${HF_TOKEN:-}
@@ -33,7 +33,7 @@ services:
       - --max-model-len
       - "65536"
       - --max-num-batched-tokens
-      - "16384"
+      - "8096" # 16384
       - --max-num-seqs
       - "1"
 
@@ -45,7 +45,7 @@ services:
       - qwen3_coder
 
       - --speculative-config 
-      - '{"method": "mtp", "num_speculative_tokens": 4}'
+      - '{"method": "mtp", "num_speculative_tokens": 2}'
 
       - --moe_backend
       - flashinfer_cutlass
