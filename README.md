@@ -2,25 +2,25 @@
 
 Proxy that translates Ollama API requests to OpenAI-compatible API requests. Lets Ollama clients talk to vLLM.
 
-Works with VS Code (Ollama integration, Copilot Custom OpenAI) and the Ollama CLI — no client changes needed.
+Works with Github copilot (Ollama integration) and the Ollama CLI.
 
 > **Tested on RTX 5090** — All benchmarks and examples in this repository were validated on an NVIDIA RTX 5090 GPU.
 
 ## Architecture
 
 ```
-VS Code / Ollama client
+GitHub Copilot (vscode) / Ollama client
         │
         ▼
 ┌─────────────────┐
-│  ollama-proxy    │  :11434
-│  (this project)  │
+│  ollama-proxy   │  :11434
+│  (this project) │
 └────────┬────────┘
          │  OpenAI API
          ▼
 ┌─────────────────┐
-│     vLLM         │  :8000
-│  (GPU backend)   │
+│     vLLM        │  :8000
+│  (GPU backend)  │
 └─────────────────┘
 ```
 
