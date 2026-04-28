@@ -56,14 +56,14 @@ openai-ollama-proxy
 (note: im using podman for development, docker commands should work but are not tested)
 
 ```bash
-# Build
-docker build -t openai-ollama-proxy .
+# Pull
+docker pull ghcr.io/k0in/openai-ollama-proxy:latest
 
 # Run
 docker run -p 11434:11434 \
   -e VLLM_BASE_URL=http://host.docker.internal:8000 \
   -e VLLM_MODEL=your-model \
-  openai-ollama-proxy
+  ghcr.io/k0in/openai-ollama-proxy:latest
 ```
 
 ### Docker Compose Examples
@@ -75,6 +75,8 @@ Pre-configured examples for different models are available in the `examples/` di
 | [examples/docker-compose-qwen3-27b.yml](examples/docker-compose-qwen3-27b.yml) | Qwen3.6-27B (NVFP4) | Smaller, faster, ~27B params |
 | [examples/docker-compose-qwen3-35b.yml](examples/docker-compose-qwen3-35b.yml) | Qwen3.6-35B (AWQ) | Mixture of Experts, ~35B params |
 | [examples/docker-compose-qwen2.5-coder-14b.yml](examples/docker-compose-qwen2.5-coder-14b.yml) | Qwen2.5-Coder-14B (GPTQ Int4) | Coding model, ~14B params |
+
+The examples pull `ghcr.io/k0in/openai-ollama-proxy:latest` by default. Uncomment the local `build:` line in the compose file if you want to build the proxy from this checkout instead.
 
 ```bash
 # Run with Qwen3.6-27B

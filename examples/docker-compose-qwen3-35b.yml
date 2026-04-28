@@ -45,7 +45,8 @@ services:
       - nvidia.com/gpu=all
 
   proxy:
-    build: ..
+    image: ghcr.io/k0in/openai-ollama-proxy:latest
+    # build: ..
     restart: unless-stopped
     ports:
       - "11434:11434"
