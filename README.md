@@ -53,6 +53,8 @@ openai-ollama-proxy
 
 ### Docker
 
+(note: im using podman for development, docker commands should work but are not tested)
+
 ```bash
 # Build
 docker build -t openai-ollama-proxy .
@@ -95,7 +97,7 @@ docker compose -f examples/docker-compose-qwen2.5-coder-14b.yml up -d
 | `VLLM_MODEL` | `default` | model id presented to vLLM |
 | `MODEL_NAME` | `qwen3:latest` | model name presented to Ollama clients |
 | `MODEL_CONTEXT_LENGTH` | `65536` | reported via `/api/show` and `/v1/models` |
-| `OLLAMA_VERSION` | `0.6.4` | reported by `/api/version` |
+| `OLLAMA_VERSION` | `0.6.4` | reported by `/api/version`, set this to whatever vscode wants |
 | `VLLM_STARTUP_WAIT` | `30m` | retry budget while vLLM is loading the model |
 | `VLLM_RETRY_INTERVAL` | `2s` | delay between startup retries |
 | `HTTP_REQUEST_TIMEOUT` | `30s` | cap for short upstream calls (embeddings, models, health) |
@@ -121,3 +123,9 @@ OLLAMA_HOST=http://localhost:11434 ollama run qwen3:latest "hello"
 # or run ollama in docker
 docker run -it --entrypoint ollama -e OLLAMA_HOST="http://host.docker.internal:11434" docker.io/ollama/ollama run qwen3:latest "hello"
 ```
+
+## Missing features
+
+* Images (not tested)
+* Other upstream APIs (files, embeddings, etc) 
+* Other upstream services (only vllm is tested)
