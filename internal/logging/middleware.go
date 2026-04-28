@@ -41,7 +41,7 @@ func Middleware(debug bool, next http.Handler) http.Handler {
 			var headers strings.Builder
 			for key, values := range r.Header {
 				for _, value := range values {
-					headers.WriteString(fmt.Sprintf("  %s: %s\n", key, RedactHeaderValue(key, value)))
+					fmt.Fprintf(&headers, "  %s: %s\n", key, RedactHeaderValue(key, value))
 				}
 			}
 			log.Printf(">>> %s %s | ua=%q\n%s", r.Method, r.URL.String(), userAgent, headers.String())

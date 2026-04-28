@@ -19,7 +19,7 @@ func (server *Server) handlePull(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 	var req types.OllamaPullRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
 		http.Error(w, "invalid json: "+err.Error(), http.StatusBadRequest)
@@ -35,7 +35,7 @@ func (server *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 	var req struct {
 		Stream   *bool             `json:"stream,omitempty"`
 		System   string            `json:"system,omitempty"`
@@ -56,7 +56,7 @@ func (server *Server) handleCopy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 	_, _ = io.Copy(io.Discard, r.Body)
 	w.WriteHeader(http.StatusOK)
 }
@@ -66,13 +66,13 @@ func (server *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 	_, _ = io.Copy(io.Discard, r.Body)
 	w.WriteHeader(http.StatusOK)
 }
 
 func (server *Server) handleBlobs(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 	_, _ = io.Copy(io.Discard, r.Body)
 
 	switch r.Method {
@@ -187,15 +187,6 @@ func toModelDetails(metadata modelMetadata) types.OllamaModelDetails {
 		ParameterSize:     metadata.ParameterSize,
 		QuantizationLevel: metadata.Quantization,
 	}
-}
-
-func writeProgressResponses(w http.ResponseWriter, stream *bool, statuses ...string) {
-	responses := make([]types.OllamaProgressResponse, len(statuses))
-	for i, status := range statuses {
-		responses[i] = types.OllamaProgressResponse{Status: status}
-	}
-
-	writeProgressObjects(w, stream, responses)
 }
 
 func writeProgressObjects(w http.ResponseWriter, stream *bool, responses []types.OllamaProgressResponse) {

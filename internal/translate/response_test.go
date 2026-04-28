@@ -216,9 +216,9 @@ func TestOpenAIEmbedToOllama_Basic(t *testing.T) {
 		Object: "list",
 		Data: []types.OpenAIEmbedData{
 			{
-				Object:      `""`,
-				Index:       0,
-				Embedding:   []float64{0.1, 0.2, 0.3},
+				Object:    `""`,
+				Index:     0,
+				Embedding: []float64{0.1, 0.2, 0.3},
 			},
 		},
 		Model: "qwen3:latest",
@@ -464,7 +464,7 @@ func TestOpenAIStreamChunkToOllama_WithUsage(t *testing.T) {
 func TestOpenAIRespMsgToOllama_Reasoning(t *testing.T) {
 	msg := &types.OpenAIRespMsg{
 		Role:      "assistant",
-		Content:  ptr("Hello"),
+		Content:   ptr("Hello"),
 		Reasoning: ptr("thinking"),
 	}
 

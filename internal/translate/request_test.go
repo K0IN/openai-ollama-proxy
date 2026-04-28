@@ -148,7 +148,7 @@ func TestOllamaGenerateToOpenAI_WithImages(t *testing.T) {
 		t.Fatalf("len(Messages) = %d, want 1", len(got.Messages))
 	}
 
-	var content json.RawMessage = got.Messages[0].Content
+	content := got.Messages[0].Content
 	var parts []types.OpenAIContentPart
 	if err := json.Unmarshal(content, &parts); err != nil {
 		t.Fatal(err)

@@ -8,10 +8,10 @@ import (
 
 func Test_rewriteRequestModel(t *testing.T) {
 	tests := []struct {
-		name       string
-		input      map[string]any
-		wantModel  string
-		wantErr    bool
+		name      string
+		input     map[string]any
+		wantModel string
+		wantErr   bool
 	}{
 		{
 			name:      "adds model field",
@@ -219,9 +219,9 @@ func Test_truncateForLog(t *testing.T) {
 
 func Test_normalizeOpenAIMessageMap(t *testing.T) {
 	tests := []struct {
-		name   string
-		input  map[string]any
-		check  func(t *testing.T, result map[string]any)
+		name  string
+		input map[string]any
+		check func(t *testing.T, result map[string]any)
 	}{
 		{
 			name:  "uses content as-is",
@@ -292,12 +292,12 @@ func Test_normalizeOpenAIMessageMap(t *testing.T) {
 
 func Test_normalizeOpenAIChoiceMap(t *testing.T) {
 	tests := []struct {
-		name   string
-		input  map[string]any
-		check  func(t *testing.T, result map[string]any)
+		name  string
+		input map[string]any
+		check func(t *testing.T, result map[string]any)
 	}{
 		{
-			name: "removes token_ids and stop_reason",
+			name:  "removes token_ids and stop_reason",
 			input: map[string]any{"token_ids": []any{1, 2}, "stop_reason": "eos"},
 			check: func(t *testing.T, result map[string]any) {
 				if _, ok := result["token_ids"]; ok {
@@ -343,9 +343,9 @@ func Test_normalizeOpenAIChoiceMap(t *testing.T) {
 
 func Test_normalizeOpenAIJSON(t *testing.T) {
 	tests := []struct {
-		name   string
-		input  map[string]any
-		check  func(t *testing.T, result map[string]any)
+		name  string
+		input map[string]any
+		check func(t *testing.T, result map[string]any)
 	}{
 		{
 			name:  "sets model to config name",
@@ -418,9 +418,9 @@ func Test_normalizeOpenAIJSON_invalidJSON(t *testing.T) {
 
 func Test_normalizeOpenAIStreamLine(t *testing.T) {
 	tests := []struct {
-		name   string
-		line   string
-		check  func(t *testing.T, result string)
+		name  string
+		line  string
+		check func(t *testing.T, result string)
 	}{
 		{
 			name: "non-data line unchanged",
@@ -441,8 +441,8 @@ func Test_normalizeOpenAIStreamLine(t *testing.T) {
 			},
 		},
 		{
-			name:  "data line with valid JSON gets normalized",
-			line:  "data: {\"content\":\"hello\",\"reasoning_content\":\"rc\"}",
+			name: "data line with valid JSON gets normalized",
+			line: "data: {\"content\":\"hello\",\"reasoning_content\":\"rc\"}",
 			check: func(t *testing.T, result string) {
 				if !containsSubstring(t, result, "data: ") {
 					t.Error("result should start with 'data: '")

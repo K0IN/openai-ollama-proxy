@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -53,7 +54,9 @@ func main() {
 	select {
 	case err := <-serverErr:
 		if err != nil {
-			log.Fatalf("server error: %v", err)
+			stop()
+			log.Printf("server error: %v", err)
+			os.Exit(1) //nolint:gocritic // stop() above releases signal handler before exit
 		}
 	case <-ctx.Done():
 		log.Printf("shutdown signal received, draining for up to %s", cfg.ShutdownTimeout)

@@ -114,7 +114,7 @@ func (server *Server) currentModelMetadata(ctx context.Context) modelMetadata {
 	if err != nil {
 		return metadata
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return metadata
@@ -300,7 +300,7 @@ func (server *Server) probeVLLMHealth(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	_, _ = io.Copy(io.Discard, resp.Body)
 
 	return resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices, nil
@@ -331,7 +331,7 @@ func (server *Server) doUpstreamChatWithRetry(ctx context.Context, payload []byt
 			}
 
 			errBody, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			lastErr = fmt.Errorf("upstream returned 503: %s", strings.TrimSpace(string(errBody)))
 		} else {
 			lastErr = err

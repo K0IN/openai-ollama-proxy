@@ -116,8 +116,7 @@ func DetectImageMIME(b64 string) string {
 		return mime
 	}
 
-	switch sniffed := http.DetectContentType(data); {
-	case strings.HasPrefix(sniffed, "image/"):
+	if sniffed := http.DetectContentType(data); strings.HasPrefix(sniffed, "image/") {
 		return sniffed
 	}
 

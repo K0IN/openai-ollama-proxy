@@ -1,4 +1,4 @@
-FROM --platform=${TARGETPLATFORM} golang:1.24-alpine AS builder
+FROM --platform=${TARGETPLATFORM} golang:1.25.9-alpine AS builder
 WORKDIR /app
 COPY go.mod ./
 COPY cmd ./cmd

@@ -46,7 +46,7 @@ func (server *Server) handleOpenAIChat(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to read body", http.StatusBadRequest)
 		return
 	}
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 
 	payload, strippedTools, err := server.rewriteRequestForChat(body)
 	if err != nil {
@@ -68,7 +68,7 @@ func (server *Server) handleOpenAIChat(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "upstream not ready: "+err.Error(), http.StatusServiceUnavailable)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if server.cfg.Debug {
 		log.Printf("<<< UPSTREAM (openai passthrough) %d | content-type=%q", resp.StatusCode, resp.Header.Get("Content-Type"))
@@ -123,7 +123,7 @@ func (server *Server) handleOpenAIEmbeddings(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "failed to read body", http.StatusBadRequest)
 		return
 	}
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 
 	payload, err := server.rewriteRequestModel(body)
 	if err != nil {
@@ -146,7 +146,7 @@ func (server *Server) handleOpenAIEmbeddings(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "upstream error: "+err.Error(), http.StatusBadGateway)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	copyResponseHeaders(w, resp)
 	w.WriteHeader(resp.StatusCode)

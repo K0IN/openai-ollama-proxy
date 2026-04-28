@@ -27,7 +27,7 @@ func (server *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to read body", http.StatusBadRequest)
 		return
 	}
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 
 	var ollamaReq types.OllamaChatRequest
 	if err := json.Unmarshal(body, &ollamaReq); err != nil {
@@ -77,7 +77,7 @@ func (server *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "upstream not ready: "+err.Error(), http.StatusServiceUnavailable)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if server.cfg.Debug {
 		log.Printf("<<< UPSTREAM %d | content-type=%q", resp.StatusCode, resp.Header.Get("Content-Type"))

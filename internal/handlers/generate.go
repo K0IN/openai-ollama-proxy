@@ -27,7 +27,7 @@ func (server *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to read body", http.StatusBadRequest)
 		return
 	}
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 
 	var ollamaReq types.OllamaGenerateRequest
 	if err := json.Unmarshal(body, &ollamaReq); err != nil {
@@ -72,7 +72,7 @@ func (server *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "upstream not ready: "+err.Error(), http.StatusServiceUnavailable)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		errBody, _ := io.ReadAll(resp.Body)
@@ -213,7 +213,7 @@ func (server *Server) handleEmbed(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to read body", http.StatusBadRequest)
 		return
 	}
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 
 	var ollamaReq types.OllamaEmbedRequest
 	if err := json.Unmarshal(body, &ollamaReq); err != nil {
@@ -249,7 +249,7 @@ func (server *Server) handleEmbed(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "upstream error: "+err.Error(), http.StatusBadGateway)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	timings.markResponseStart()
 
 	if resp.StatusCode != http.StatusOK {
@@ -283,7 +283,7 @@ func (server *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to read body", http.StatusBadRequest)
 		return
 	}
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 
 	var ollamaReq types.OllamaEmbedRequest
 	if err := json.Unmarshal(body, &ollamaReq); err != nil {
@@ -318,7 +318,7 @@ func (server *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "upstream error: "+err.Error(), http.StatusBadGateway)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		errBody, _ := io.ReadAll(resp.Body)
