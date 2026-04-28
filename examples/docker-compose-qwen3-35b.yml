@@ -1,6 +1,4 @@
 services:
-  # Main configuration for Qwen3.6-27B (NVFP4)
-  # For alternative configurations, see examples/ directory
   vllm:
     image: docker.io/vllm/vllm-openai:cu130-nightly
     runtime: nvidia
@@ -17,14 +15,7 @@ services:
       - HUGGINGFACE_HUB_TOKEN=${HF_TOKEN:-}
       - PYTORCH_CUDA_ALLOC_CONF=${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}
     command:
-      - sakamakismile/Qwen3.6-27B-Text-NVFP4-MTP
-      - --trust-remote-code
-      - --quantization
-      - modelopt
-      - --kv-cache-dtype
-      - fp8
-      - --speculative-config
-      - '{"method":"qwen3_5_mtp","num_speculative_tokens":3}'
+      - cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit
       - --host
       - 0.0.0.0
       - --port
@@ -33,6 +24,7 @@ services:
       - ${VLLM_API_KEY:?VLLM_API_KEY is required (see .env.example)}
       - --served-model-name
       - Qwen3.6
+      - --enable-expert-parallel
       - --language-model-only
       - --max-model-len
       - "65536"
@@ -45,12 +37,15 @@ services:
       - --enable-auto-tool-choice
       - --tool-call-parser
       - qwen3_coder
-      - --enable-prefix-caching
+      - --speculative-config
+      - '{"method": "mtp", "num_speculative_tokens": 2}'
+      - --moe_backend
+      - flashinfer_cutlass
     devices:
       - nvidia.com/gpu=all
 
   proxy:
-    build: .
+    build: ..
     restart: unless-stopped
     ports:
       - "11434:11434"

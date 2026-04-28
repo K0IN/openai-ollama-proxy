@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -83,22 +84,96 @@ func ConvertMessagesToOpenAI(msgs []types.OllamaMessage) ([]types.OpenAIMessage,
 	return out, nil
 }
 
+// DetectImageMIME inspects a base64-encoded image payload and returns its
+// MIME type. It first checks well-known magic-byte prefixes that net/http's
+// sniffer mishandles or doesn't recognize (notably WebP variants and AVIF /
+// HEIC ISO Base Media containers), then falls back to http.DetectContentType
+// for everything else. Returns "image/jpeg" as a last-resort default to
+// preserve previous behaviour for opaque payloads.
 func DetectImageMIME(b64 string) string {
-	data, err := base64.StdEncoding.DecodeString(b64[:min(len(b64), 16)])
+	// Decode up to 512 bytes' worth of header data. http.DetectContentType
+	// uses at most the first 512 bytes; base64 inflates by 4/3, so 700 chars
+	// always covers the full sniff window even with padding/whitespace.
+	b64Header := b64
+	if len(b64Header) > 700 {
+		b64Header = b64Header[:700]
+	}
+	// Trim trailing partial base64 quartet so DecodeString does not fail on
+	// otherwise-valid prefixes.
+	b64Header = b64Header[:len(b64Header)-(len(b64Header)%4)]
+
+	data, err := base64.StdEncoding.DecodeString(b64Header)
 	if err != nil || len(data) < 4 {
 		return "image/jpeg"
 	}
 
-	switch {
-	case data[0] == 0x89 && data[1] == 0x50:
-		return "image/png"
-	case data[0] == 0x47 && data[1] == 0x49:
-		return "image/gif"
-	case data[0] == 0x52 && data[1] == 0x49:
-		return "image/webp"
-	default:
-		return "image/jpeg"
+	// Containers that http.DetectContentType either misclassifies or cannot
+	// distinguish without inspecting box types.
+	if mime := detectISOBMFFImageMIME(data); mime != "" {
+		return mime
 	}
+	if mime := detectRIFFImageMIME(data); mime != "" {
+		return mime
+	}
+
+	switch sniffed := http.DetectContentType(data); {
+	case strings.HasPrefix(sniffed, "image/"):
+		return sniffed
+	}
+
+	return "image/jpeg"
+}
+
+// detectISOBMFFImageMIME recognises ISO Base Media File Format containers
+// (HEIC / HEIF / AVIF). Layout: 4-byte big-endian size, "ftyp" tag, 4-byte
+// major brand, 4-byte minor version, then >=1 compatible brand entries.
+func detectISOBMFFImageMIME(data []byte) string {
+	if len(data) < 12 {
+		return ""
+	}
+	if string(data[4:8]) != "ftyp" {
+		return ""
+	}
+
+	major := string(data[8:12])
+	switch major {
+	case "avif", "avis":
+		return "image/avif"
+	case "heic", "heix", "hevc", "hevx":
+		return "image/heic"
+	case "mif1", "msf1", "heim", "heis":
+		return "image/heif"
+	}
+
+	// Walk compatible brands (4 bytes each) starting at offset 16.
+	for i := 16; i+4 <= len(data) && i < 64; i += 4 {
+		switch string(data[i : i+4]) {
+		case "avif", "avis":
+			return "image/avif"
+		case "heic", "heix", "hevc", "hevx":
+			return "image/heic"
+		case "mif1", "msf1":
+			return "image/heif"
+		}
+	}
+	return ""
+}
+
+// detectRIFFImageMIME recognises RIFF-based image containers (currently only
+// WebP). http.DetectContentType handles WebP correctly when the full RIFF
+// header is present, but we duplicate the check here so a 4-byte "RIFF"
+// prefix is no longer mistaken for WebP unconditionally.
+func detectRIFFImageMIME(data []byte) string {
+	if len(data) < 12 {
+		return ""
+	}
+	if string(data[0:4]) != "RIFF" {
+		return ""
+	}
+	if string(data[8:12]) == "WEBP" {
+		return "image/webp"
+	}
+	return ""
 }
 
 func OllamaGenerateToOpenAI(req types.OllamaGenerateRequest) (types.OpenAIChatRequest, error) {

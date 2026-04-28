@@ -19,5 +19,19 @@
 
 # Go workspace file
 go.work
+
+# Build artifacts
 openai-ollama-proxy
+coverage.out
+
+# IDE
 /.playwright-mcp
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Local env overrides — never commit; use .env.example as the template
+.env
+.env.*
+!.env.example

@@ -26,7 +26,8 @@ func (server *Server) proxyOpenAIStream(w http.ResponseWriter, resp *http.Respon
 	loggedFirstChunk := false
 
 	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 0, 256*1024), 1024*1024)
+	// See chat.go for sizing rationale.
+	scanner.Buffer(make([]byte, 0, 256*1024), 10*1024*1024)
 	for scanner.Scan() {
 		lineText := server.normalizeOpenAIStreamLine(scanner.Text())
 		line := []byte(lineText)

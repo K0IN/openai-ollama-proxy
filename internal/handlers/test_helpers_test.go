@@ -20,7 +20,7 @@ func newTestServer() *Server {
 		VLLMModel:             "test-model",
 		ModelName:             "qwen3:latest",
 		ModelContextLength:    65536,
-		OllamaVersion:         "0.7.0",
+		OllamaVersion:         "0.6.4",
 		UpstreamStartupWait:   2 * time.Second,
 		UpstreamRetryInterval: 10 * time.Millisecond,
 	}, &http.Client{Timeout: 5 * time.Second})

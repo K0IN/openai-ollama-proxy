@@ -1,0 +1,72 @@
+### vLLM direct API quick tests
+### Requires VS Code REST Client extension
+### This bypasses the proxy and talks to vLLM OpenAI-compatible endpoints directly.
+
+@host = http://127.0.0.1:8000
+@apiKey = localdev
+@model = Qwen3.6
+
+### Health check
+GET {{host}}/health HTTP/1.1
+
+###
+
+### List available models
+GET {{host}}/v1/models HTTP/1.1
+Authorization: Bearer {{apiKey}}
+
+###
+
+### Chat completions (non-streaming)
+POST {{host}}/v1/chat/completions HTTP/1.1
+Content-Type: application/json
+Authorization: Bearer {{apiKey}}
+
+{
+  "model": "{{model}}",
+  "messages": [
+    {"role": "user", "content": "Say hello in one sentence."}
+  ],
+  "stream": false
+}
+
+###
+
+### Chat completions (streaming)
+POST {{host}}/v1/chat/completions HTTP/1.1
+Content-Type: application/json
+Authorization: Bearer {{apiKey}}
+
+{
+  "model": "{{model}}",
+  "messages": [
+    {"role": "user", "content": "Write a 1-line haiku about GPUs."}
+  ],
+  "stream": true
+}
+
+###
+
+### Completions endpoint
+POST {{host}}/v1/completions HTTP/1.1
+Content-Type: application/json
+Authorization: Bearer {{apiKey}}
+
+{
+  "model": "{{model}}",
+  "prompt": "Complete this sentence in a friendly tone: Today is",
+  "max_tokens": 32,
+  "temperature": 0.7
+}
+
+###
+
+### Embeddings endpoint
+POST {{host}}/v1/embeddings HTTP/1.1
+Content-Type: application/json
+Authorization: Bearer {{apiKey}}
+
+{
+  "model": "{{model}}",
+  "input": "Hello from direct vLLM test"
+}

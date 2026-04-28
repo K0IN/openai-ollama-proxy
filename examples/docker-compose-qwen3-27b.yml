@@ -1,6 +1,4 @@
 services:
-  # Main configuration for Qwen3.6-27B (NVFP4)
-  # For alternative configurations, see examples/ directory
   vllm:
     image: docker.io/vllm/vllm-openai:cu130-nightly
     runtime: nvidia
@@ -50,7 +48,7 @@ services:
       - nvidia.com/gpu=all
 
   proxy:
-    build: .
+    build: ..
     restart: unless-stopped
     ports:
       - "11434:11434"

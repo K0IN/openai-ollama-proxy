@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 
+	applogging "github.com/k0in/openai-ollama-proxy/internal/logging"
 	"github.com/k0in/openai-ollama-proxy/internal/types"
 )
 
@@ -58,7 +59,7 @@ func (server *Server) handleOpenAIChat(w http.ResponseWriter, r *http.Request) {
 		if strippedTools {
 			log.Printf("openai chat request normalized | tools stripped for direct-response compatibility")
 		}
-		log.Printf(">>> UPSTREAM (openai passthrough) POST %s/v1/chat/completions (%d bytes):\n  %s", server.cfg.VLLMBaseURL, len(payload), string(payload))
+		log.Printf(">>> UPSTREAM (openai passthrough) POST %s/v1/chat/completions (%d bytes):\n  %s", server.cfg.VLLMBaseURL, len(payload), string(applogging.RedactJSONForLog(payload)))
 	}
 
 	resp, err := server.doUpstreamChatWithRetry(r.Context(), payload)
@@ -75,7 +76,7 @@ func (server *Server) handleOpenAIChat(w http.ResponseWriter, r *http.Request) {
 
 	if resp.StatusCode != http.StatusOK {
 		errBody, _ := io.ReadAll(resp.Body)
-		log.Printf("upstream openai-chat error %d: %s | %s | sent: %s", resp.StatusCode, string(errBody), reqSummary, string(payload))
+		log.Printf("upstream openai-chat error %d: %s | %s | sent: %s", resp.StatusCode, string(errBody), reqSummary, string(applogging.RedactJSONForLog(payload)))
 		http.Error(w, fmt.Sprintf("upstream error: %d", resp.StatusCode), resp.StatusCode)
 		return
 	}
@@ -140,7 +141,7 @@ func (server *Server) handleOpenAIEmbeddings(w http.ResponseWriter, r *http.Requ
 		upstream.Header.Set("Authorization", "Bearer "+server.cfg.VLLMAPIKey)
 	}
 
-	resp, err := server.client.Do(upstream)
+	resp, err := server.requestClient.Do(upstream)
 	if err != nil {
 		http.Error(w, "upstream error: "+err.Error(), http.StatusBadGateway)
 		return

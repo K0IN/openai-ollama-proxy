@@ -41,7 +41,7 @@ func Middleware(debug bool, next http.Handler) http.Handler {
 			var headers strings.Builder
 			for key, values := range r.Header {
 				for _, value := range values {
-					headers.WriteString(fmt.Sprintf("  %s: %s\n", key, value))
+					headers.WriteString(fmt.Sprintf("  %s: %s\n", key, RedactHeaderValue(key, value)))
 				}
 			}
 			log.Printf(">>> %s %s | ua=%q\n%s", r.Method, r.URL.String(), userAgent, headers.String())
@@ -50,11 +50,12 @@ func Middleware(debug bool, next http.Handler) http.Handler {
 				body, _ := io.ReadAll(r.Body)
 				r.Body = io.NopCloser(bytes.NewReader(body))
 				if len(body) > 0 {
+					redacted := RedactJSONForLog(body)
 					var indented bytes.Buffer
-					if err := json.Indent(&indented, body, "  ", "  "); err == nil {
+					if err := json.Indent(&indented, redacted, "  ", "  "); err == nil {
 						log.Printf(">>> REQUEST BODY (%d bytes):\n  %s", len(body), indented.String())
 					} else {
-						log.Printf(">>> REQUEST BODY (%d bytes): %s", len(body), string(body))
+						log.Printf(">>> REQUEST BODY (%d bytes): %s", len(body), string(redacted))
 					}
 				}
 			}
