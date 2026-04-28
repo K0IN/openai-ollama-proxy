@@ -34,7 +34,8 @@ var redactedJSONFieldSubstrings = []string{
 }
 
 // RedactHeaderValue returns the value as-is unless name matches a known
-// sensitive header, in which case it returns a fixed placeholder.
+// sensitive header, in which case it returns a fixed placeholder. The
+// returned value is always sanitized for safe inclusion in log output.
 func RedactHeaderValue(name, value string) string {
 	if _, sensitive := redactedSensitiveHeaders[http.CanonicalHeaderKey(name)]; sensitive {
 		if value == "" {
@@ -42,7 +43,37 @@ func RedactHeaderValue(name, value string) string {
 		}
 		return "[REDACTED]"
 	}
-	return value
+	return SanitizeForLog(value)
+}
+
+// SanitizeForLog replaces ASCII control characters (including CR/LF) in s
+// with a single space so attacker-controlled input cannot forge or split log
+// lines (CWE-117). Tab is preserved.
+func SanitizeForLog(s string) string {
+	if s == "" {
+		return s
+	}
+	needs := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c < 0x20 && c != '\t') || c == 0x7f {
+			needs = true
+			break
+		}
+	}
+	if !needs {
+		return s
+	}
+	b := make([]byte, len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c < 0x20 && c != '\t') || c == 0x7f {
+			b[i] = ' '
+			continue
+		}
+		b[i] = c
+	}
+	return string(b)
 }
 
 // RedactJSONForLog parses payload as JSON and replaces values for any keys

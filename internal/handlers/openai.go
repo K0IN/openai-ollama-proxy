@@ -55,7 +55,7 @@ func (server *Server) handleOpenAIChat(w http.ResponseWriter, r *http.Request) {
 	}
 	reqSummary := requestDebugSummary(payload)
 	if server.cfg.Debug {
-		log.Printf("openai chat request start | %s | accept=%q content-type=%q", reqSummary, r.Header.Get("Accept"), r.Header.Get("Content-Type"))
+		log.Printf("openai chat request start | %s | accept=%q content-type=%q", reqSummary, applogging.SanitizeForLog(r.Header.Get("Accept")), applogging.SanitizeForLog(r.Header.Get("Content-Type"))) // #nosec G706 -- inputs sanitized via SanitizeForLog
 		if strippedTools {
 			log.Printf("openai chat request normalized | tools stripped for direct-response compatibility")
 		}

@@ -15,14 +15,7 @@ services:
       - HUGGINGFACE_HUB_TOKEN=
       - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
     command:
-      - sakamakismile/Qwen3.6-27B-Text-NVFP4-MTP
-      - --trust-remote-code
-      - --quantization
-      - modelopt
-      - --kv-cache-dtype
-      - fp8
-      - --speculative-config
-      - '{"method":"qwen3_5_mtp","num_speculative_tokens":3}'
+      - Qwen/Qwen2.5-Coder-14B-Instruct-GPTQ-Int4
       - --host
       - 0.0.0.0
       - --port
@@ -30,19 +23,22 @@ services:
       - --api-key
       - change-me
       - --served-model-name
-      - Qwen3.6
-      - --language-model-only
+      - Qwen2.5-Coder
+      - --quantization
+      - gptq_marlin
+      - --dtype
+      - float16
+      - --kv-cache-dtype
+      - fp8
       - --max-model-len
-      - "65536"
+      - "32768"
       - --max-num-batched-tokens
-      - "8096"
+      - "8192"
       - --max-num-seqs
       - "1"
-      - --reasoning-parser
-      - qwen3
       - --enable-auto-tool-choice
       - --tool-call-parser
-      - qwen3_coder
+      - hermes
       - --enable-prefix-caching
     devices:
       - nvidia.com/gpu=all
@@ -56,9 +52,9 @@ services:
       - LISTEN_ADDR=:11434
       - VLLM_BASE_URL=http://vllm:8000
       - VLLM_API_KEY=change-me
-      - VLLM_MODEL=Qwen3.6
-      - MODEL_NAME=qwen3:latest
-      - MODEL_CONTEXT_LENGTH=65536
+      - VLLM_MODEL=Qwen2.5-Coder
+      - MODEL_NAME=qwen2.5-coder:latest
+      - MODEL_CONTEXT_LENGTH=32768
       - OLLAMA_VERSION=0.6.4
       - VLLM_STARTUP_WAIT=30m
       - VLLM_RETRY_INTERVAL=2s

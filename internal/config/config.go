@@ -162,7 +162,7 @@ func envOrDuration(key string, fallback time.Duration) time.Duration {
 
 	duration, err := time.ParseDuration(value)
 	if err != nil {
-		log.Printf("invalid %s=%q, using default %s", key, value, fallback)
+		log.Printf("invalid %s=%q, using default %s", key, sanitizeForLog(value), fallback) // #nosec G706 -- value sanitized via sanitizeForLog
 		return fallback
 	}
 
@@ -177,7 +177,7 @@ func envOrInt(key string, fallback int) int {
 
 	parsed, err := strconv.Atoi(value)
 	if err != nil {
-		log.Printf("invalid %s=%q, using default %d", key, value, fallback)
+		log.Printf("invalid %s=%q, using default %d", key, sanitizeForLog(value), fallback) // #nosec G706 -- value sanitized via sanitizeForLog
 		return fallback
 	}
 
@@ -192,9 +192,24 @@ func envOrInt64(key string, fallback int64) int64 {
 
 	parsed, err := strconv.ParseInt(value, 10, 64)
 	if err != nil {
-		log.Printf("invalid %s=%q, using default %d", key, value, fallback)
+		log.Printf("invalid %s=%q, using default %d", key, sanitizeForLog(value), fallback) // #nosec G706 -- value sanitized via sanitizeForLog
 		return fallback
 	}
 
 	return parsed
+}
+
+// sanitizeForLog replaces ASCII control characters in s with spaces so
+// untrusted environment variable values cannot forge log lines (CWE-117).
+func sanitizeForLog(s string) string {
+	if s == "" {
+		return s
+	}
+	b := []byte(s)
+	for i, c := range b {
+		if (c < 0x20 && c != '\t') || c == 0x7f {
+			b[i] = ' '
+		}
+	}
+	return string(b)
 }

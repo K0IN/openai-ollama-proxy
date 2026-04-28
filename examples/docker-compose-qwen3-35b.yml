@@ -9,11 +9,11 @@ services:
     volumes:
       - ~/.vllm-cache:/root/.cache/huggingface
     environment:
-      - VLLM_API_KEY=${VLLM_API_KEY:?VLLM_API_KEY is required (see .env.example)}
-      - HF_TOKEN=${HF_TOKEN:-}
-      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
-      - HUGGINGFACE_HUB_TOKEN=${HF_TOKEN:-}
-      - PYTORCH_CUDA_ALLOC_CONF=${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}
+      - VLLM_API_KEY=change-me
+      - HF_TOKEN=
+      - HUGGING_FACE_HUB_TOKEN=
+      - HUGGINGFACE_HUB_TOKEN=
+      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
     command:
       - cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit
       - --host
@@ -21,7 +21,7 @@ services:
       - --port
       - "8000"
       - --api-key
-      - ${VLLM_API_KEY:?VLLM_API_KEY is required (see .env.example)}
+      - change-me
       - --served-model-name
       - Qwen3.6
       - --enable-expert-parallel
@@ -52,18 +52,18 @@ services:
     environment:
       - LISTEN_ADDR=:11434
       - VLLM_BASE_URL=http://vllm:8000
-      - VLLM_API_KEY=${VLLM_API_KEY:?VLLM_API_KEY is required (see .env.example)}
-      - VLLM_MODEL=${VLLM_MODEL:-Qwen3.6}
-      - MODEL_NAME=${MODEL_NAME:-qwen3:latest}
-      - MODEL_CONTEXT_LENGTH=${MODEL_CONTEXT_LENGTH:-65536}
-      - OLLAMA_VERSION=${OLLAMA_VERSION:-0.6.4}
-      - VLLM_STARTUP_WAIT=${VLLM_STARTUP_WAIT:-30m}
-      - VLLM_RETRY_INTERVAL=${VLLM_RETRY_INTERVAL:-2s}
-      - HTTP_REQUEST_TIMEOUT=${HTTP_REQUEST_TIMEOUT:-30s}
-      - HTTP_STREAM_TIMEOUT=${HTTP_STREAM_TIMEOUT:-5m}
-      - SHUTDOWN_TIMEOUT=${SHUTDOWN_TIMEOUT:-30s}
-      - MAX_REQUEST_BYTES=${MAX_REQUEST_BYTES:-33554432}
-      - DEBUG=${DEBUG:-false}
+      - VLLM_API_KEY=change-me
+      - VLLM_MODEL=Qwen3.6
+      - MODEL_NAME=qwen3:latest
+      - MODEL_CONTEXT_LENGTH=65536
+      - OLLAMA_VERSION=0.6.4
+      - VLLM_STARTUP_WAIT=30m
+      - VLLM_RETRY_INTERVAL=2s
+      - HTTP_REQUEST_TIMEOUT=30s
+      - HTTP_STREAM_TIMEOUT=5m
+      - SHUTDOWN_TIMEOUT=30s
+      - MAX_REQUEST_BYTES=33554432
+      - DEBUG=false
     depends_on:
       - vllm
 

@@ -44,7 +44,8 @@ func Middleware(debug bool, next http.Handler) http.Handler {
 					fmt.Fprintf(&headers, "  %s: %s\n", key, RedactHeaderValue(key, value))
 				}
 			}
-			log.Printf(">>> %s %s | ua=%q\n%s", r.Method, r.URL.String(), userAgent, headers.String())
+			// Tainted inputs are passed through SanitizeForLog above.
+			log.Printf(">>> %s %s | ua=%q\n%s", SanitizeForLog(r.Method), SanitizeForLog(r.URL.String()), SanitizeForLog(userAgent), headers.String()) // #nosec G706 -- inputs sanitized via SanitizeForLog
 
 			if r.Body != nil && r.Method == http.MethodPost {
 				body, _ := io.ReadAll(r.Body)
@@ -64,6 +65,6 @@ func Middleware(debug bool, next http.Handler) http.Handler {
 		next.ServeHTTP(recorder, r)
 
 		duration := time.Since(start).Round(time.Millisecond)
-		log.Printf("<<< %s %s %d %s | ua=%q", r.Method, r.URL.Path, recorder.status, duration, userAgent)
+		log.Printf("<<< %s %s %d %s | ua=%q", SanitizeForLog(r.Method), SanitizeForLog(r.URL.Path), recorder.status, duration, SanitizeForLog(userAgent)) // #nosec G706 -- inputs sanitized via SanitizeForLog
 	})
 }

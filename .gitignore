@@ -31,8 +31,7 @@ coverage.out
 *.swp
 *.swo
 
-# Local env overrides — never commit; use .env.example as the template
+# Local env overrides — never commit
 .env
 .env.*
-!.env.example
 *.sarif
