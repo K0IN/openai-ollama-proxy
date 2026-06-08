@@ -3,14 +3,15 @@ services:
   # For alternative configurations, see examples/ directory.
   # Edit VLLM_API_KEY (and HF_TOKEN if pulling gated models) before running.
   vllm:
-    image: docker.io/vllm/vllm-openai:cu130-nightly
+    image: docker.io/vllm/vllm-openai:latest
     runtime: nvidia
     ipc: host
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "31432:8000"
     volumes:
       - ~/.vllm-cache:/root/.cache/huggingface
+      - ~/.vllm-compile-cache:/root/.cache/vllm
     environment:
       - VLLM_API_KEY=change-me
       - HF_TOKEN=
@@ -47,6 +48,12 @@ services:
       - --tool-call-parser
       - qwen3_coder
       - --enable-prefix-caching
+      - --gpu-memory-utilization
+      - "0.85"
+    deploy:
+      resources:
+        limits:
+          memory: 24g
     devices:
       - nvidia.com/gpu=all
 
