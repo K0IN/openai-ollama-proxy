@@ -52,14 +52,14 @@ services:
       - "11434:11434"
     environment:
       - LISTEN_ADDR=:11434
-      - VLLM_BASE_URL=http://vllm:8000
-      - VLLM_API_KEY=change-me
-      - VLLM_MODEL=Qwen3.6
+      - UPSTREAM_BASE_URL=http://vllm:8000
+      - UPSTREAM_API_KEY=change-me
+      - UPSTREAM_MODEL=Qwen3.6
       - MODEL_NAME=qwen3:latest
       - MODEL_CONTEXT_LENGTH=65536
       - OLLAMA_VERSION=0.6.4
-      - VLLM_STARTUP_WAIT=30m
-      - VLLM_RETRY_INTERVAL=2s
+      - UPSTREAM_STARTUP_WAIT=30m
+      - UPSTREAM_RETRY_INTERVAL=2s
       - HTTP_REQUEST_TIMEOUT=30s
       - HTTP_STREAM_TIMEOUT=5m
       - SHUTDOWN_TIMEOUT=30s

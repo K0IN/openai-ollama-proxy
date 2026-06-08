@@ -9,9 +9,9 @@ import (
 func validConfig() Config {
 	return Config{
 		ListenAddr:            ":11434",
-		VLLMBaseURL:           "http://vllm:8000",
-		VLLMModel:             "default",
-		ModelName:             "qwen3:latest",
+		UpstreamBaseURL:       "http://upstream:8000",
+		UpstreamModel:         "default",
+		ModelName:             "generic:latest",
 		ModelContextLength:    65536,
 		UpstreamStartupWait:   30 * time.Minute,
 		UpstreamRetryInterval: 2 * time.Second,
@@ -44,26 +44,26 @@ func TestValidate_ListenAddr(t *testing.T) {
 	}
 }
 
-func TestValidate_VLLMBaseURL(t *testing.T) {
+func TestValidate_UpstreamBaseURL(t *testing.T) {
 	cases := []struct{ url, want string }{
-		{"", "VLLM_BASE_URL must not be empty"},
+		{"", "UPSTREAM_BASE_URL must not be empty"},
 		{"://broken", "is not a valid URL"},
 		{"ftp://host", "must use http or https scheme"},
 		{"http://", "is missing a host"},
 	}
 	for _, c := range cases {
 		cfg := validConfig()
-		cfg.VLLMBaseURL = c.url
+		cfg.UpstreamBaseURL = c.url
 		err := cfg.Validate()
 		if err == nil || !strings.Contains(err.Error(), c.want) {
-			t.Errorf("VLLMBaseURL=%q: got %v, want substring %q", c.url, err, c.want)
+			t.Errorf("UpstreamBaseURL=%q: got %v, want substring %q", c.url, err, c.want)
 		}
 	}
 }
 
 func TestValidate_HTTPSBaseURL_Allowed(t *testing.T) {
 	cfg := validConfig()
-	cfg.VLLMBaseURL = "https://vllm.example.com"
+	cfg.UpstreamBaseURL = "https://upstream.example.com"
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("https URL should be valid: %v", err)
 	}
@@ -78,8 +78,8 @@ func TestValidate_PositiveInts(t *testing.T) {
 
 	cfg = validConfig()
 	cfg.UpstreamRetryInterval = 0
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "VLLM_RETRY_INTERVAL") {
-		t.Errorf("UpstreamRetryInterval=0: got %v, want VLLM_RETRY_INTERVAL error", err)
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "UPSTREAM_RETRY_INTERVAL") {
+		t.Errorf("UpstreamRetryInterval=0: got %v, want UPSTREAM_RETRY_INTERVAL error", err)
 	}
 }
 
@@ -102,9 +102,9 @@ func TestValidate_NonNegativeDurations(t *testing.T) {
 
 func TestValidate_RequiredStrings(t *testing.T) {
 	cfg := validConfig()
-	cfg.VLLMModel = "   "
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "VLLM_MODEL") {
-		t.Errorf("blank VLLM_MODEL should fail, got %v", err)
+	cfg.UpstreamModel = "   "
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "UPSTREAM_MODEL") {
+		t.Errorf("blank UPSTREAM_MODEL should fail, got %v", err)
 	}
 
 	cfg = validConfig()
@@ -120,7 +120,7 @@ func TestValidate_AggregatesErrors(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for empty Config")
 	}
-	for _, want := range []string{"LISTEN_ADDR", "VLLM_BASE_URL", "VLLM_MODEL", "MODEL_NAME", "MODEL_CONTEXT_LENGTH"} {
+	for _, want := range []string{"LISTEN_ADDR", "UPSTREAM_BASE_URL", "UPSTREAM_MODEL", "MODEL_NAME", "MODEL_CONTEXT_LENGTH"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("aggregated error missing %q in %q", want, err.Error())
 		}

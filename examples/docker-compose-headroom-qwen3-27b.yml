@@ -1,0 +1,137 @@
+services:
+  vllm:
+    image: docker.io/vllm/vllm-openai:latest
+    runtime: nvidia
+    ipc: host
+    restart: unless-stopped
+    ports:
+      - "31432:8000"
+    volumes:
+      - ~/.vllm-cache:/root/.cache/huggingface
+      - ~/.vllm-compile-cache:/root/.cache/vllm
+    environment:
+      - VLLM_API_KEY=${VLLM_API_KEY:-change-me}
+      - HF_TOKEN=${HF_TOKEN:-}
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
+      - HUGGINGFACE_HUB_TOKEN=${HF_TOKEN:-}
+      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+    command:
+      - sakamakismile/Qwen3.6-27B-Text-NVFP4-MTP
+      - --trust-remote-code
+      - --quantization
+      - modelopt
+      - --kv-cache-dtype
+      - fp8
+      - --speculative-config
+      - '{"method":"qwen3_5_mtp","num_speculative_tokens":3}'
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --api-key
+      - ${VLLM_API_KEY:-change-me}
+      - --served-model-name
+      - "qwen3:latest"
+      - --language-model-only
+      - --max-model-len
+      - "65536"
+      - --max-num-batched-tokens
+      - "8096"
+      - --max-num-seqs
+      - "1"
+      - --reasoning-parser
+      - qwen3
+      - --enable-auto-tool-choice
+      - --tool-call-parser
+      - qwen3_coder
+      - --enable-prefix-caching
+      - --gpu-memory-utilization
+      - "0.85"
+    deploy:
+      resources:
+        limits:
+          memory: 24g
+    devices:
+      - nvidia.com/gpu=all
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    restart: unless-stopped
+    depends_on:
+      - vllm
+    environment:
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-local-change-me}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - VLLM_API_KEY=${VLLM_API_KEY:-change-me}
+    volumes:
+      - ./litellm-headroom.config.yaml:/app/config.yaml:ro
+    command:
+      - --config
+      - /app/config.yaml
+      - --host
+      - 0.0.0.0
+      - --port
+      - "4000"
+    expose:
+      - "4000"
+
+  headroom:
+    build:
+      context: .
+      dockerfile: Dockerfile.headroom
+    restart: unless-stopped
+    depends_on:
+      - litellm
+    ports:
+      - "8787:8787"
+    environment:
+      - OPENAI_API_KEY=${LITELLM_MASTER_KEY:-sk-local-change-me}
+      - HEADROOM_TELEMETRY=off
+      - HEADROOM_WORKSPACE_DIR=/data
+      - HEADROOM_MODE=token
+    volumes:
+      - headroom-data:/data
+    command:
+      - headroom
+      - proxy
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8787"
+      - --mode
+      - token
+      - --openai-api-url
+      - http://litellm:4000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8787/readyz"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  proxy:
+    image: ghcr.io/k0in/openai-ollama-proxy:latest
+    # build: ..
+    restart: unless-stopped
+    depends_on:
+      - headroom
+    ports:
+      - "11434:11434"
+    environment:
+      - LISTEN_ADDR=:11434
+      - UPSTREAM_BASE_URL=http://headroom:8787
+      - UPSTREAM_API_KEY=${LITELLM_MASTER_KEY:-sk-local-change-me}
+      - UPSTREAM_MODEL=qwen3:latest
+      - MODEL_NAME=qwen3:latest
+      - MODEL_CONTEXT_LENGTH=65536
+      - OLLAMA_VERSION=0.6.4
+      - UPSTREAM_STARTUP_WAIT=30m
+      - UPSTREAM_RETRY_INTERVAL=2s
+      - HTTP_REQUEST_TIMEOUT=30s
+      - HTTP_STREAM_TIMEOUT=5m
+      - SHUTDOWN_TIMEOUT=30s
+      - MAX_REQUEST_BYTES=33554432
+      - DEBUG=false
+
+volumes:
+  headroom-data:

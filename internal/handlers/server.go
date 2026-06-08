@@ -72,6 +72,7 @@ func (server *Server) Routes() http.Handler {
 	mux.HandleFunc("/api/embed", server.handleEmbed)
 	mux.HandleFunc("/api/embeddings", server.handleEmbeddings)
 	mux.HandleFunc("/api/pull", server.handlePull)
+	mux.HandleFunc("/api/push", server.handlePush)
 	mux.HandleFunc("/api/create", server.handleCreate)
 	mux.HandleFunc("/api/copy", server.handleCopy)
 	mux.HandleFunc("/api/delete", server.handleDelete)
@@ -102,12 +103,12 @@ func (server *Server) Routes() http.Handler {
 func (server *Server) currentModelMetadata(ctx context.Context) modelMetadata {
 	metadata := server.fallbackModelMetadata()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.cfg.VLLMBaseURL+"/v1/models", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.cfg.UpstreamBaseURL+"/v1/models", nil)
 	if err != nil {
 		return metadata
 	}
-	if server.cfg.VLLMAPIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+server.cfg.VLLMAPIKey)
+	if server.cfg.UpstreamAPIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+server.cfg.UpstreamAPIKey)
 	}
 
 	resp, err := server.requestClient.Do(req)
@@ -126,7 +127,7 @@ func (server *Server) currentModelMetadata(ctx context.Context) modelMetadata {
 	}
 
 	for _, model := range list.Data {
-		if model.ID != server.cfg.VLLMModel && model.Root != server.cfg.VLLMModel {
+		if model.ID != server.cfg.UpstreamModel && model.Root != server.cfg.UpstreamModel {
 			continue
 		}
 		if model.MaxModelLen > 0 {
@@ -148,12 +149,12 @@ func (server *Server) fallbackModelMetadata() modelMetadata {
 	metadata := modelMetadata{
 		ContextLength: server.cfg.ModelContextLength,
 		Family:        "transformer",
-		ParentModel:   server.cfg.VLLMModel,
+		ParentModel:   server.cfg.UpstreamModel,
 		Format:        "unknown",
 		ParameterSize: "unknown",
 		Quantization:  "unknown",
 	}
-	applyModelNameHints(&metadata, server.cfg.VLLMModel)
+	applyModelNameHints(&metadata, server.cfg.UpstreamModel)
 	return metadata
 }
 
@@ -284,16 +285,16 @@ func ollamaModelInfo(metadata modelMetadata) map[string]any {
 	return info
 }
 
-func (server *Server) probeVLLMHealth(ctx context.Context) (bool, error) {
+func (server *Server) probeUpstreamHealth(ctx context.Context) (bool, error) {
 	healthCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	upstream, err := http.NewRequestWithContext(healthCtx, http.MethodGet, strings.TrimRight(server.cfg.VLLMBaseURL, "/")+"/health", nil)
+	upstream, err := http.NewRequestWithContext(healthCtx, http.MethodGet, strings.TrimRight(server.cfg.UpstreamBaseURL, "/")+"/v1/models", nil)
 	if err != nil {
 		return false, err
 	}
-	if server.cfg.VLLMAPIKey != "" {
-		upstream.Header.Set("Authorization", "Bearer "+server.cfg.VLLMAPIKey)
+	if server.cfg.UpstreamAPIKey != "" {
+		upstream.Header.Set("Authorization", "Bearer "+server.cfg.UpstreamAPIKey)
 	}
 
 	resp, err := server.requestClient.Do(upstream)
@@ -315,13 +316,13 @@ func (server *Server) doUpstreamChatWithRetry(ctx context.Context, payload []byt
 	var lastErr error
 
 	for {
-		upstream, err := http.NewRequestWithContext(ctx, http.MethodPost, server.cfg.VLLMBaseURL+"/v1/chat/completions", bytes.NewReader(payload))
+		upstream, err := http.NewRequestWithContext(ctx, http.MethodPost, server.cfg.UpstreamBaseURL+"/v1/chat/completions", bytes.NewReader(payload))
 		if err != nil {
 			return nil, err
 		}
 		upstream.Header.Set("Content-Type", "application/json")
-		if server.cfg.VLLMAPIKey != "" {
-			upstream.Header.Set("Authorization", "Bearer "+server.cfg.VLLMAPIKey)
+		if server.cfg.UpstreamAPIKey != "" {
+			upstream.Header.Set("Authorization", "Bearer "+server.cfg.UpstreamAPIKey)
 		}
 
 		resp, err := server.client.Do(upstream)
@@ -352,7 +353,7 @@ func (server *Server) doUpstreamChatWithRetry(ctx context.Context, payload []byt
 		lastErr = errors.New("upstream not ready")
 	}
 
-	return nil, fmt.Errorf("vLLM unavailable after %s: %w", server.cfg.UpstreamStartupWait, lastErr)
+	return nil, fmt.Errorf("upstream unavailable after %s: %w", server.cfg.UpstreamStartupWait, lastErr)
 }
 
 func copyResponseHeaders(dst http.ResponseWriter, src *http.Response) {

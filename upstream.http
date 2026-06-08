@@ -1,13 +1,14 @@
-### vLLM direct API quick tests
+### Upstream OpenAI-compatible API quick tests
 ### Requires VS Code REST Client extension
-### This bypasses the proxy and talks to vLLM OpenAI-compatible endpoints directly.
+### Talks directly to the upstream OpenAI-compatible endpoints.
 
 @host = http://127.0.0.1:8000
 @apiKey = localdev
-@model = Qwen3.6
+@model = default
 
 ### Health check
-GET {{host}}/health HTTP/1.1
+GET {{host}}/v1/models HTTP/1.1
+Authorization: Bearer {{apiKey}}
 
 ###
 
@@ -68,5 +69,5 @@ Authorization: Bearer {{apiKey}}
 
 {
   "model": "{{model}}",
-  "input": "Hello from direct vLLM test"
+  "input": "Hello from direct upstream test"
 }

@@ -10,7 +10,7 @@ import (
 
 func TestHandleRoot_Healthy(t *testing.T) {
 	server := newTestServer()
-	cleanup := withVLLMHealthServer(t, server, http.StatusOK, "ok")
+	cleanup := withUpstreamHealthServer(t, server, http.StatusOK, "ok")
 	defer cleanup()
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -27,7 +27,7 @@ func TestHandleRoot_Healthy(t *testing.T) {
 
 func TestHandleRoot_Unhealthy(t *testing.T) {
 	server := newTestServer()
-	cleanup := withVLLMHealthServer(t, server, http.StatusServiceUnavailable, "loading")
+	cleanup := withUpstreamHealthServer(t, server, http.StatusServiceUnavailable, "loading")
 	defer cleanup()
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -44,7 +44,7 @@ func TestHandleRoot_Unhealthy(t *testing.T) {
 
 func TestHandleHead_Healthy(t *testing.T) {
 	server := newTestServer()
-	cleanup := withVLLMHealthServer(t, server, http.StatusOK, "ok")
+	cleanup := withUpstreamHealthServer(t, server, http.StatusOK, "ok")
 	defer cleanup()
 
 	req := httptest.NewRequest(http.MethodHead, "/", nil)
@@ -61,7 +61,7 @@ func TestHandleHead_Healthy(t *testing.T) {
 
 func TestHandleHead_Unhealthy(t *testing.T) {
 	server := newTestServer()
-	cleanup := withVLLMHealthServer(t, server, http.StatusServiceUnavailable, "loading")
+	cleanup := withUpstreamHealthServer(t, server, http.StatusServiceUnavailable, "loading")
 	defer cleanup()
 
 	req := httptest.NewRequest(http.MethodHead, "/", nil)
@@ -184,7 +184,7 @@ func TestHandleShow(t *testing.T) {
 
 func TestHandleShow_ParameterCountIsNumeric(t *testing.T) {
 	server := newTestServer()
-	server.cfg.VLLMModel = "Qwen3-35B-FP8"
+	server.cfg.UpstreamModel = "Qwen3-35B-FP8"
 
 	req := httptest.NewRequest(http.MethodPost, "/api/show", strings.NewReader(`{"model":"qwen3:latest"}`))
 	w := httptest.NewRecorder()

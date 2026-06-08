@@ -12,7 +12,7 @@ func (server *Server) rewriteRequestModel(body []byte) ([]byte, error) {
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return nil, err
 	}
-	payload["model"] = server.cfg.VLLMModel
+	payload["model"] = server.cfg.UpstreamModel
 	return json.Marshal(payload)
 }
 
@@ -21,10 +21,7 @@ func (server *Server) rewriteRequestForChat(body []byte) ([]byte, bool, error) {
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return nil, false, err
 	}
-	payload["model"] = server.cfg.VLLMModel
-	if _, ok := payload["chat_template_kwargs"]; !ok {
-		payload["chat_template_kwargs"] = map[string]any{"enable_thinking": false}
-	}
+	payload["model"] = server.cfg.UpstreamModel
 
 	normalized, err := json.Marshal(payload)
 	if err != nil {

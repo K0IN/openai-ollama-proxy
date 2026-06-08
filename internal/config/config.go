@@ -15,9 +15,9 @@ import (
 
 type Config struct {
 	ListenAddr            string
-	VLLMBaseURL           string
-	VLLMAPIKey            string
-	VLLMModel             string
+	UpstreamBaseURL       string
+	UpstreamAPIKey        string
+	UpstreamModel         string
 	ModelName             string
 	ModelContextLength    int
 	OllamaVersion         string
@@ -40,14 +40,14 @@ type Config struct {
 func Load() Config {
 	cfg := Config{
 		ListenAddr:            envOr("LISTEN_ADDR", ":11434"),
-		VLLMBaseURL:           envOr("VLLM_BASE_URL", "http://localhost:8000"),
-		VLLMAPIKey:            envOr("VLLM_API_KEY", ""),
-		VLLMModel:             envOr("VLLM_MODEL", "default"),
-		ModelName:             envOr("MODEL_NAME", "qwen3:latest"),
+		UpstreamBaseURL:       envOr("UPSTREAM_BASE_URL", "http://localhost:8000"),
+		UpstreamAPIKey:        envOr("UPSTREAM_API_KEY", ""),
+		UpstreamModel:         envOr("UPSTREAM_MODEL", "default"),
+		ModelName:             envOr("MODEL_NAME", "generic:latest"),
 		ModelContextLength:    envOrInt("MODEL_CONTEXT_LENGTH", 65536),
 		OllamaVersion:         envOr("OLLAMA_VERSION", "0.6.4"),
-		UpstreamStartupWait:   envOrDuration("VLLM_STARTUP_WAIT", 30*time.Minute),
-		UpstreamRetryInterval: envOrDuration("VLLM_RETRY_INTERVAL", 2*time.Second),
+		UpstreamStartupWait:   envOrDuration("UPSTREAM_STARTUP_WAIT", 30*time.Minute),
+		UpstreamRetryInterval: envOrDuration("UPSTREAM_RETRY_INTERVAL", 2*time.Second),
 		MaxRequestBytes:       envOrInt64("MAX_REQUEST_BYTES", 32<<20), // 32 MiB
 		ShutdownTimeout:       envOrDuration("SHUTDOWN_TIMEOUT", 30*time.Second),
 		HTTPRequestTimeout:    envOrDuration("HTTP_REQUEST_TIMEOUT", 30*time.Second),
@@ -74,22 +74,22 @@ func (c Config) Validate() error {
 		errs = append(errs, fmt.Sprintf("LISTEN_ADDR %q is not a valid host:port: %v", c.ListenAddr, err))
 	}
 
-	if strings.TrimSpace(c.VLLMBaseURL) == "" {
-		errs = append(errs, "VLLM_BASE_URL must not be empty")
+	if strings.TrimSpace(c.UpstreamBaseURL) == "" {
+		errs = append(errs, "UPSTREAM_BASE_URL must not be empty")
 	} else {
-		parsed, err := url.Parse(c.VLLMBaseURL)
+		parsed, err := url.Parse(c.UpstreamBaseURL)
 		switch {
 		case err != nil:
-			errs = append(errs, fmt.Sprintf("VLLM_BASE_URL %q is not a valid URL: %v", c.VLLMBaseURL, err))
+			errs = append(errs, fmt.Sprintf("UPSTREAM_BASE_URL %q is not a valid URL: %v", c.UpstreamBaseURL, err))
 		case parsed.Scheme != "http" && parsed.Scheme != "https":
-			errs = append(errs, fmt.Sprintf("VLLM_BASE_URL %q must use http or https scheme", c.VLLMBaseURL))
+			errs = append(errs, fmt.Sprintf("UPSTREAM_BASE_URL %q must use http or https scheme", c.UpstreamBaseURL))
 		case parsed.Host == "":
-			errs = append(errs, fmt.Sprintf("VLLM_BASE_URL %q is missing a host", c.VLLMBaseURL))
+			errs = append(errs, fmt.Sprintf("UPSTREAM_BASE_URL %q is missing a host", c.UpstreamBaseURL))
 		}
 	}
 
-	if strings.TrimSpace(c.VLLMModel) == "" {
-		errs = append(errs, "VLLM_MODEL must not be empty")
+	if strings.TrimSpace(c.UpstreamModel) == "" {
+		errs = append(errs, "UPSTREAM_MODEL must not be empty")
 	}
 
 	if strings.TrimSpace(c.ModelName) == "" {
@@ -101,10 +101,10 @@ func (c Config) Validate() error {
 	}
 
 	if c.UpstreamStartupWait < 0 {
-		errs = append(errs, fmt.Sprintf("VLLM_STARTUP_WAIT must be >= 0 (got %s)", c.UpstreamStartupWait))
+		errs = append(errs, fmt.Sprintf("UPSTREAM_STARTUP_WAIT must be >= 0 (got %s)", c.UpstreamStartupWait))
 	}
 	if c.UpstreamRetryInterval <= 0 {
-		errs = append(errs, fmt.Sprintf("VLLM_RETRY_INTERVAL must be > 0 (got %s)", c.UpstreamRetryInterval))
+		errs = append(errs, fmt.Sprintf("UPSTREAM_RETRY_INTERVAL must be > 0 (got %s)", c.UpstreamRetryInterval))
 	}
 
 	if c.MaxRequestBytes < 0 {

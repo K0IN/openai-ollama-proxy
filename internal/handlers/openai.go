@@ -59,7 +59,7 @@ func (server *Server) handleOpenAIChat(w http.ResponseWriter, r *http.Request) {
 		if strippedTools {
 			log.Printf("openai chat request normalized | tools stripped for direct-response compatibility")
 		}
-		log.Printf(">>> UPSTREAM (openai passthrough) POST %s/v1/chat/completions (%d bytes):\n  %s", server.cfg.VLLMBaseURL, len(payload), string(applogging.RedactJSONForLog(payload)))
+		log.Printf(">>> UPSTREAM (openai passthrough) POST %s/v1/chat/completions (%d bytes):\n  %s", server.cfg.UpstreamBaseURL, len(payload), string(applogging.RedactJSONForLog(payload)))
 	}
 
 	resp, err := server.doUpstreamChatWithRetry(r.Context(), payload)
@@ -131,14 +131,14 @@ func (server *Server) handleOpenAIEmbeddings(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	upstream, err := http.NewRequestWithContext(r.Context(), http.MethodPost, server.cfg.VLLMBaseURL+"/v1/embeddings", bytes.NewReader(payload))
+	upstream, err := http.NewRequestWithContext(r.Context(), http.MethodPost, server.cfg.UpstreamBaseURL+"/v1/embeddings", bytes.NewReader(payload))
 	if err != nil {
 		http.Error(w, "request error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	upstream.Header.Set("Content-Type", "application/json")
-	if server.cfg.VLLMAPIKey != "" {
-		upstream.Header.Set("Authorization", "Bearer "+server.cfg.VLLMAPIKey)
+	if server.cfg.UpstreamAPIKey != "" {
+		upstream.Header.Set("Authorization", "Bearer "+server.cfg.UpstreamAPIKey)
 	}
 
 	resp, err := server.requestClient.Do(upstream)

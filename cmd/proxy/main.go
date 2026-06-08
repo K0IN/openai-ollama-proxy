@@ -20,8 +20,8 @@ func main() {
 	server := handlers.NewWithClients(cfg, config.NewHTTPClient(cfg), config.NewRequestHTTPClient(cfg))
 
 	log.Printf("openai-ollama-proxy listening on %s", cfg.ListenAddr)
-	log.Printf("  vLLM backend:        %s", cfg.VLLMBaseURL)
-	log.Printf("  vLLM model:          %s", cfg.VLLMModel)
+	log.Printf("  upstream URL:        %s", cfg.UpstreamBaseURL)
+	log.Printf("  upstream model:      %s", cfg.UpstreamModel)
 	log.Printf("  Ollama model:        %s", cfg.ModelName)
 	log.Printf("  max request bytes:   %d", cfg.MaxRequestBytes)
 	log.Printf("  request timeout:     %s", cfg.HTTPRequestTimeout)

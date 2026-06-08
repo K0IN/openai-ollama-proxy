@@ -15,10 +15,10 @@ import (
 func newTestServer() *Server {
 	return New(config.Config{
 		ListenAddr:            ":11434",
-		VLLMBaseURL:           "http://127.0.0.1:0",
-		VLLMAPIKey:            "",
-		VLLMModel:             "test-model",
-		ModelName:             "qwen3:latest",
+		UpstreamBaseURL:       "http://127.0.0.1:0",
+		UpstreamAPIKey:        "",
+		UpstreamModel:         "test-model",
+		ModelName:             "generic:latest",
 		ModelContextLength:    65536,
 		OllamaVersion:         "0.6.4",
 		UpstreamStartupWait:   2 * time.Second,
@@ -26,15 +26,15 @@ func newTestServer() *Server {
 	}, &http.Client{Timeout: 5 * time.Second})
 }
 
-func withVLLMHealthServer(t *testing.T, server *Server, statusCode int, body string) func() {
+func withUpstreamHealthServer(t *testing.T, server *Server, statusCode int, body string) func() {
 	t.Helper()
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			t.Fatalf("method = %q, want %q", r.Method, http.MethodGet)
 		}
-		if r.URL.Path != "/health" {
-			t.Fatalf("path = %q, want %q", r.URL.Path, "/health")
+		if r.URL.Path != "/v1/models" {
+			t.Fatalf("path = %q, want %q", r.URL.Path, "/v1/models")
 		}
 		if r.Header.Get("Authorization") != "Bearer test-key" {
 			t.Fatalf("authorization = %q, want %q", r.Header.Get("Authorization"), "Bearer test-key")
@@ -46,14 +46,14 @@ func withVLLMHealthServer(t *testing.T, server *Server, statusCode int, body str
 		}
 	}))
 
-	origURL := server.cfg.VLLMBaseURL
-	origKey := server.cfg.VLLMAPIKey
-	server.cfg.VLLMBaseURL = upstream.URL
-	server.cfg.VLLMAPIKey = "test-key"
+	origURL := server.cfg.UpstreamBaseURL
+	origKey := server.cfg.UpstreamAPIKey
+	server.cfg.UpstreamBaseURL = upstream.URL
+	server.cfg.UpstreamAPIKey = "test-key"
 
 	return func() {
-		server.cfg.VLLMBaseURL = origURL
-		server.cfg.VLLMAPIKey = origKey
+		server.cfg.UpstreamBaseURL = origURL
+		server.cfg.UpstreamAPIKey = origKey
 		upstream.Close()
 	}
 }

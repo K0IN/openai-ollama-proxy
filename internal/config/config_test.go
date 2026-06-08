@@ -70,28 +70,28 @@ func TestEnvOrInt_Unset(t *testing.T) {
 func TestLoad_DefaultValues(t *testing.T) {
 	// Clear all relevant env vars
 	t.Setenv("LISTEN_ADDR", "")
-	t.Setenv("VLLM_BASE_URL", "")
-	t.Setenv("VLLM_API_KEY", "")
-	t.Setenv("VLLM_MODEL", "")
+	t.Setenv("UPSTREAM_BASE_URL", "")
+	t.Setenv("UPSTREAM_API_KEY", "")
+	t.Setenv("UPSTREAM_MODEL", "")
 	t.Setenv("MODEL_NAME", "")
 	t.Setenv("MODEL_CONTEXT_LENGTH", "")
 	t.Setenv("OLLAMA_VERSION", "")
-	t.Setenv("VLLM_STARTUP_WAIT", "")
-	t.Setenv("VLLM_RETRY_INTERVAL", "")
+	t.Setenv("UPSTREAM_STARTUP_WAIT", "")
+	t.Setenv("UPSTREAM_RETRY_INTERVAL", "")
 	t.Setenv("DEBUG", "")
 
 	cfg := Load()
 	if cfg.ListenAddr != ":11434" {
 		t.Errorf("ListenAddr = %q, want %q", cfg.ListenAddr, ":11434")
 	}
-	if cfg.VLLMBaseURL != "http://localhost:8000" {
-		t.Errorf("VLLMBaseURL = %q, want %q", cfg.VLLMBaseURL, "http://localhost:8000")
+	if cfg.UpstreamBaseURL != "http://localhost:8000" {
+		t.Errorf("UpstreamBaseURL = %q, want %q", cfg.UpstreamBaseURL, "http://localhost:8000")
 	}
-	if cfg.VLLMModel != "default" {
-		t.Errorf("VLLMModel = %q, want %q", cfg.VLLMModel, "default")
+	if cfg.UpstreamModel != "default" {
+		t.Errorf("UpstreamModel = %q, want %q", cfg.UpstreamModel, "default")
 	}
-	if cfg.ModelName != "qwen3:latest" {
-		t.Errorf("ModelName = %q, want %q", cfg.ModelName, "qwen3:latest")
+	if cfg.ModelName != "generic:latest" {
+		t.Errorf("ModelName = %q, want %q", cfg.ModelName, "generic:latest")
 	}
 	if cfg.ModelContextLength != 65536 {
 		t.Errorf("ModelContextLength = %d, want %d", cfg.ModelContextLength, 65536)

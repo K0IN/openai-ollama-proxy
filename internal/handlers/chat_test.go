@@ -87,7 +87,7 @@ func TestHandleChat_Unload(t *testing.T) {
 
 func TestHandleChat_NonStream(t *testing.T) {
 	server := newTestServer()
-	content := "Hello from vLLM!"
+	content := "Hello from upstream!"
 	stop := "stop"
 	mockResp := types.OpenAIChatResponse{
 		ID:      "chatcmpl-123",
@@ -111,13 +111,13 @@ func TestHandleChat_NonStream(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	origURL := server.cfg.VLLMBaseURL
-	origKey := server.cfg.VLLMAPIKey
-	server.cfg.VLLMBaseURL = upstream.URL
-	server.cfg.VLLMAPIKey = "test-key"
+	origURL := server.cfg.UpstreamBaseURL
+	origKey := server.cfg.UpstreamAPIKey
+	server.cfg.UpstreamBaseURL = upstream.URL
+	server.cfg.UpstreamAPIKey = "test-key"
 	defer func() {
-		server.cfg.VLLMBaseURL = origURL
-		server.cfg.VLLMAPIKey = origKey
+		server.cfg.UpstreamBaseURL = origURL
+		server.cfg.UpstreamAPIKey = origKey
 	}()
 
 	ollamaReq := `{"model":"qwen3:latest","messages":[{"role":"user","content":"Hi"}],"stream":false}`
@@ -140,8 +140,8 @@ func TestHandleChat_NonStream(t *testing.T) {
 	if got.Message.Role != "assistant" {
 		t.Errorf("Role = %q, want %q", got.Message.Role, "assistant")
 	}
-	if got.Message.Content != "Hello from vLLM!" {
-		t.Errorf("Content = %q, want %q", got.Message.Content, "Hello from vLLM!")
+	if got.Message.Content != "Hello from upstream!" {
+		t.Errorf("Content = %q, want %q", got.Message.Content, "Hello from upstream!")
 	}
 	if !got.Done {
 		t.Error("Done should be true")
@@ -194,9 +194,9 @@ func TestHandleChat_Stream(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	origURL := server.cfg.VLLMBaseURL
-	server.cfg.VLLMBaseURL = upstream.URL
-	defer func() { server.cfg.VLLMBaseURL = origURL }()
+	origURL := server.cfg.UpstreamBaseURL
+	server.cfg.UpstreamBaseURL = upstream.URL
+	defer func() { server.cfg.UpstreamBaseURL = origURL }()
 
 	ollamaReq := `{"model":"qwen3:latest","messages":[{"role":"user","content":"Hi"}],"stream":true}`
 	req := httptest.NewRequest(http.MethodPost, "/api/chat", strings.NewReader(ollamaReq))
@@ -301,9 +301,9 @@ func TestHandleChat_Stream_ToolCalls(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	origURL := server.cfg.VLLMBaseURL
-	server.cfg.VLLMBaseURL = upstream.URL
-	defer func() { server.cfg.VLLMBaseURL = origURL }()
+	origURL := server.cfg.UpstreamBaseURL
+	server.cfg.UpstreamBaseURL = upstream.URL
+	defer func() { server.cfg.UpstreamBaseURL = origURL }()
 
 	ollamaReq := `{"model":"qwen3:latest","messages":[{"role":"user","content":"Use the tool"}],"stream":true}`
 	req := httptest.NewRequest(http.MethodPost, "/api/chat", strings.NewReader(ollamaReq))

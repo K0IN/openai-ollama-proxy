@@ -33,7 +33,7 @@ func Test_rewriteRequestModel(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := newTestServer()
-			server.cfg.VLLMModel = "test-model"
+			server.cfg.UpstreamModel = "test-model"
 
 			body, _ := json.Marshal(tt.input)
 			result, err := server.rewriteRequestModel(body)
@@ -70,10 +70,10 @@ func Test_rewriteRequestForChat(t *testing.T) {
 		wantChatKwargs bool
 	}{
 		{
-			name:           "adds model and chat_template_kwargs",
+			name:           "adds model",
 			input:          map[string]any{"messages": []any{}},
 			wantModel:      "test-model",
-			wantChatKwargs: true,
+			wantChatKwargs: false,
 		},
 		{
 			name:           "preserves existing chat_template_kwargs",
@@ -86,7 +86,7 @@ func Test_rewriteRequestForChat(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := newTestServer()
-			server.cfg.VLLMModel = "test-model"
+			server.cfg.UpstreamModel = "test-model"
 
 			body, _ := json.Marshal(tt.input)
 			result, changed, err := server.rewriteRequestForChat(body)

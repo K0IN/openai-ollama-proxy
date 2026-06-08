@@ -57,7 +57,7 @@ func (server *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "translation error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	openAIReq.Model = server.cfg.VLLMModel
+	openAIReq.Model = server.cfg.UpstreamModel
 
 	openAIBody, err := json.Marshal(openAIReq)
 	if err != nil {
@@ -221,7 +221,7 @@ func (server *Server) handleEmbed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	openAIReq := types.OpenAIEmbedRequest{Model: server.cfg.VLLMModel, Input: ollamaReq.Input}
+	openAIReq := types.OpenAIEmbedRequest{Model: server.cfg.UpstreamModel, Input: ollamaReq.Input}
 	if len(ollamaReq.Input) == 0 && ollamaReq.Prompt != "" {
 		input, _ := json.Marshal(ollamaReq.Prompt)
 		openAIReq.Input = input
@@ -233,14 +233,14 @@ func (server *Server) handleEmbed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	upstream, err := http.NewRequestWithContext(r.Context(), http.MethodPost, server.cfg.VLLMBaseURL+"/v1/embeddings", bytes.NewReader(openAIBody))
+	upstream, err := http.NewRequestWithContext(r.Context(), http.MethodPost, server.cfg.UpstreamBaseURL+"/v1/embeddings", bytes.NewReader(openAIBody))
 	if err != nil {
 		http.Error(w, "request error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	upstream.Header.Set("Content-Type", "application/json")
-	if server.cfg.VLLMAPIKey != "" {
-		upstream.Header.Set("Authorization", "Bearer "+server.cfg.VLLMAPIKey)
+	if server.cfg.UpstreamAPIKey != "" {
+		upstream.Header.Set("Authorization", "Bearer "+server.cfg.UpstreamAPIKey)
 	}
 	timings := newObservedTimings()
 
@@ -296,21 +296,21 @@ func (server *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 		input, _ = json.Marshal(ollamaReq.Prompt)
 	}
 
-	openAIReq := types.OpenAIEmbedRequest{Model: server.cfg.VLLMModel, Input: input}
+	openAIReq := types.OpenAIEmbedRequest{Model: server.cfg.UpstreamModel, Input: input}
 	openAIBody, err := json.Marshal(openAIReq)
 	if err != nil {
 		http.Error(w, "marshal error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	upstream, err := http.NewRequestWithContext(r.Context(), http.MethodPost, server.cfg.VLLMBaseURL+"/v1/embeddings", bytes.NewReader(openAIBody))
+	upstream, err := http.NewRequestWithContext(r.Context(), http.MethodPost, server.cfg.UpstreamBaseURL+"/v1/embeddings", bytes.NewReader(openAIBody))
 	if err != nil {
 		http.Error(w, "request error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	upstream.Header.Set("Content-Type", "application/json")
-	if server.cfg.VLLMAPIKey != "" {
-		upstream.Header.Set("Authorization", "Bearer "+server.cfg.VLLMAPIKey)
+	if server.cfg.UpstreamAPIKey != "" {
+		upstream.Header.Set("Authorization", "Bearer "+server.cfg.UpstreamAPIKey)
 	}
 
 	resp, err := server.requestClient.Do(upstream)

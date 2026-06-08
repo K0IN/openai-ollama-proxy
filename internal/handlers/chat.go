@@ -57,7 +57,7 @@ func (server *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "translation error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	openAIReq.Model = server.cfg.VLLMModel
+	openAIReq.Model = server.cfg.UpstreamModel
 
 	openAIBody, err := json.Marshal(openAIReq)
 	if err != nil {
@@ -66,7 +66,7 @@ func (server *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if server.cfg.Debug {
-		log.Printf(">>> UPSTREAM POST %s/v1/chat/completions (%d bytes):\n  %s", server.cfg.VLLMBaseURL, len(openAIBody), string(applogging.RedactJSONForLog(openAIBody)))
+		log.Printf(">>> UPSTREAM POST %s/v1/chat/completions (%d bytes):\n  %s", server.cfg.UpstreamBaseURL, len(openAIBody), string(applogging.RedactJSONForLog(openAIBody)))
 	}
 
 	timings := newObservedTimings()
@@ -145,7 +145,7 @@ func (server *Server) handleChatStream(w http.ResponseWriter, body io.Reader, mo
 	flusher.Flush()
 
 	scanner := bufio.NewScanner(body)
-	// SSE lines from vLLM can be large when streaming long tool-call deltas or
+	// SSE lines from upstream can be large when streaming long tool-call deltas or
 	// reasoning blocks. Allow up to 10 MiB per line; bufio.ErrTooLong is
 	// surfaced via scanner.Err() at the end of the loop.
 	scanner.Buffer(make([]byte, 0, 256*1024), 10*1024*1024)

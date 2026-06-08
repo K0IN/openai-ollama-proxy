@@ -122,7 +122,7 @@ func TestHandleChat_StreamLineExceedsBuffer(t *testing.T) {
 	defer upstream.Close()
 
 	server := newTestServer()
-	server.cfg.VLLMBaseURL = upstream.URL
+	server.cfg.UpstreamBaseURL = upstream.URL
 
 	body := strings.NewReader(`{"model":"qwen3:latest","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/chat", body)
@@ -166,7 +166,7 @@ func TestHandleChat_MalformedJSONInStream(t *testing.T) {
 	defer upstream.Close()
 
 	server := newTestServer()
-	server.cfg.VLLMBaseURL = upstream.URL
+	server.cfg.UpstreamBaseURL = upstream.URL
 
 	body := strings.NewReader(`{"model":"qwen3:latest","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/chat", body)
@@ -210,7 +210,7 @@ func TestHandleChat_ClientDisconnectMidStream(t *testing.T) {
 	defer upstream.Close()
 
 	server := newTestServer()
-	server.cfg.VLLMBaseURL = upstream.URL
+	server.cfg.UpstreamBaseURL = upstream.URL
 
 	ctx, cancel := context.WithCancel(context.Background())
 	body := strings.NewReader(`{"model":"qwen3:latest","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
@@ -251,7 +251,7 @@ func TestHandleChat_UpstreamTimeout(t *testing.T) {
 	defer upstream.Close()
 
 	server := newTestServer()
-	server.cfg.VLLMBaseURL = upstream.URL
+	server.cfg.UpstreamBaseURL = upstream.URL
 	server.client = &http.Client{Timeout: 200 * time.Millisecond}
 
 	body := strings.NewReader(`{"model":"qwen3:latest","stream":false,"messages":[{"role":"user","content":"hi"}]}`)

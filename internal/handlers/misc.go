@@ -61,6 +61,22 @@ func (server *Server) handleCopy(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func (server *Server) handlePush(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	defer func() { _ = r.Body.Close() }()
+	var req types.OllamaPullRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+		http.Error(w, "invalid json: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	writeProgressObjects(w, req.Stream, buildPushProgressResponses(req))
+}
+
 func (server *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -152,7 +168,7 @@ func (server *Server) handleHead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	healthy, err := server.probeVLLMHealth(r.Context())
+	healthy, err := server.probeUpstreamHealth(r.Context())
 	if err != nil || !healthy {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
@@ -168,7 +184,7 @@ func (server *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/plain")
-	healthy, err := server.probeVLLMHealth(r.Context())
+	healthy, err := server.probeUpstreamHealth(r.Context())
 	if err != nil || !healthy {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = fmt.Fprint(w, "Ollama is down")
@@ -225,6 +241,25 @@ func buildPullProgressResponses(req types.OllamaPullRequest) []types.OllamaProgr
 		{Status: "verifying sha256 digest"},
 		{Status: "writing manifest"},
 		{Status: "removing any unused layers"},
+		{Status: "success"},
+	}
+}
+
+func buildPushProgressResponses(req types.OllamaPullRequest) []types.OllamaProgressResponse {
+	name := req.Model
+	if name == "" {
+		name = "proxied-model"
+	}
+
+	return []types.OllamaProgressResponse{
+		{Status: "retrieving manifest"},
+		{
+			Status:    fmt.Sprintf("starting upload %s", name),
+			Digest:    fmt.Sprintf("sha256:%x", name),
+			Total:     int64(max(1, len(name))) * 1024,
+			Completed: int64(max(1, len(name))) * 1024,
+		},
+		{Status: "pushing manifest"},
 		{Status: "success"},
 	}
 }

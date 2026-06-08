@@ -18,10 +18,9 @@ func OllamaChatToOpenAI(req types.OllamaChatRequest) (types.OpenAIChatRequest, e
 	}
 
 	out := types.OpenAIChatRequest{
-		Model:              req.Model,
-		Stream:             stream,
-		Tools:              req.Tools,
-		ChatTemplateKwargs: map[string]any{"enable_thinking": false},
+		Model:  req.Model,
+		Stream: stream,
+		Tools:  req.Tools,
 	}
 
 	if stream {
@@ -226,6 +225,9 @@ func applyOptions(out *types.OpenAIChatRequest, options types.OllamaOptions) {
 
 func applyThinkingPreference(out *types.OpenAIChatRequest, think *bool) {
 	if think != nil {
+		if out.ChatTemplateKwargs == nil {
+			out.ChatTemplateKwargs = map[string]any{}
+		}
 		out.ChatTemplateKwargs["enable_thinking"] = *think
 	}
 }

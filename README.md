@@ -1,6 +1,6 @@
 # openai-ollama-proxy
 
-Proxy that translates Ollama API requests to OpenAI-compatible API requests. Lets Ollama clients talk to vLLM.
+Proxy that translates Ollama API requests to OpenAI-compatible API requests. Lets Ollama clients talk to **any** OpenAI-compatible API (vLLM, Ollama, LM Studio, localai, etc.).
 
 Works with Github copilot (Ollama integration) and the Ollama CLI.
 
@@ -8,11 +8,11 @@ Works with Github copilot (Ollama integration) and the Ollama CLI.
 
 ## Why i released this
 
-This was a quick hack to get GitHub Copilot working with vLLM (using vibecoding). I just needed it for myself and used it happily for a while. 
+This was a quick hack to get GitHub Copilot working with local LLMs via OpenAI-compatible APIs (using vibecoding). I just needed it for myself and used it happily for a while. 
 
 But lately github has announced their copilot plans will go up in price and use token based pricing, so to give users CHOICE and CONTROL over their data and costs, I decided to clean it up a bit and release it as an open source project.
 
-So you can use, YOUR models with YOUR development tools as you want, and not be forced into a specific ecosystem or pricing model or using any official open-ai api (this project will be archived, when github copilot support openai api with configurable endpoints).
+So you can use YOUR models with YOUR development tools as you want, and not be forced into a specific ecosystem or pricing model or using any official open-ai api (this project will be archived, when github copilot support openai api with configurable endpoints).
 
 ## Architecture
 
@@ -26,10 +26,10 @@ GitHub Copilot (vscode) / Ollama client
 └────────┬────────┘
          │  OpenAI API
          ▼
-┌─────────────────┐
-│     vLLM        │  :8000
-│  (GPU backend)  │
-└─────────────────┘
+┌──────────────────────┐
+│  OpenAI-compatible    │  :8000
+│  API (vLLM/Ollama/…) │
+└──────────────────────┘
 ```
 
 ## Run
@@ -41,7 +41,7 @@ GitHub Copilot (vscode) / Ollama client
 go build -o openai-ollama-proxy ./cmd/proxy
 
 # Run
-VLLM_BASE_URL=http://localhost:8000 VLLM_MODEL=your-model ./openai-ollama-proxy
+UPSTREAM_BASE_URL=http://localhost:8000 UPSTREAM_MODEL=your-model ./openai-ollama-proxy
 ```
 
 ### Install globally
@@ -61,8 +61,8 @@ docker pull ghcr.io/k0in/openai-ollama-proxy:latest
 
 # Run
 docker run -p 11434:11434 \
-  -e VLLM_BASE_URL=http://host.docker.internal:8000 \
-  -e VLLM_MODEL=your-model \
+  -e UPSTREAM_BASE_URL=http://host.docker.internal:8000 \
+  -e UPSTREAM_MODEL=your-model \
   ghcr.io/k0in/openai-ollama-proxy:latest
 ```
 
@@ -94,14 +94,14 @@ docker compose -f examples/docker-compose-qwen2.5-coder-14b.yml up -d
 | Variable | Default | Notes |
 |---|---|---|
 | `LISTEN_ADDR` | `:11434` | host:port the proxy binds to |
-| `VLLM_BASE_URL` | `http://localhost:8000` | upstream vLLM, must be `http(s)://host[:port]` |
-| `VLLM_API_KEY` | *(empty)* | sent as `Authorization: Bearer …`; required when vLLM enforces it |
-| `VLLM_MODEL` | `default` | model id presented to vLLM |
-| `MODEL_NAME` | `qwen3:latest` | model name presented to Ollama clients |
+| `UPSTREAM_BASE_URL` | `http://localhost:8000` | upstream OpenAI-compatible API, must be `http(s)://host[:port]` |
+| `UPSTREAM_API_KEY` | *(empty)* | sent as `Authorization: Bearer …`; required when upstream enforces it |
+| `UPSTREAM_MODEL` | `default` | model id presented to the upstream API |
+| `MODEL_NAME` | `generic:latest` | model name presented to Ollama clients |
 | `MODEL_CONTEXT_LENGTH` | `65536` | reported via `/api/show` and `/v1/models` |
 | `OLLAMA_VERSION` | `0.6.4` | reported by `/api/version`, set this to whatever vscode wants |
-| `VLLM_STARTUP_WAIT` | `30m` | retry budget while vLLM is loading the model |
-| `VLLM_RETRY_INTERVAL` | `2s` | delay between startup retries |
+| `UPSTREAM_STARTUP_WAIT` | `30m` | retry budget while upstream is loading the model |
+| `UPSTREAM_RETRY_INTERVAL` | `2s` | delay between startup retries |
 | `HTTP_REQUEST_TIMEOUT` | `30s` | cap for short upstream calls (embeddings, models, health) |
 | `HTTP_STREAM_TIMEOUT` | `5m` | cap for streaming chat / generate requests |
 | `SHUTDOWN_TIMEOUT` | `30s` | drain budget for in-flight requests on SIGTERM/SIGINT |
@@ -129,5 +129,5 @@ docker run -it --entrypoint ollama -e OLLAMA_HOST="http://host.docker.internal:1
 ## Missing features
 
 * Images (not tested)
-* Other upstream APIs (files, embeddings, etc) 
-* Other upstream services (only vllm is tested)
+* Other upstream APIs (files, etc) 
+* Other upstream services
