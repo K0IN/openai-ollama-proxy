@@ -11,6 +11,12 @@ import (
 	"github.com/k0in/openai-ollama-proxy/internal/types"
 )
 
+// isEmptyJSON checks if the raw JSON is an empty array or object.
+func isEmptyJSON(raw json.RawMessage) bool {
+	trimmed := strings.TrimSpace(string(raw))
+	return trimmed == "[]" || trimmed == "{}"
+}
+
 func OllamaChatToOpenAI(req types.OllamaChatRequest) (types.OpenAIChatRequest, error) {
 	stream := true
 	if req.Stream != nil {
@@ -20,7 +26,12 @@ func OllamaChatToOpenAI(req types.OllamaChatRequest) (types.OpenAIChatRequest, e
 	out := types.OpenAIChatRequest{
 		Model:  req.Model,
 		Stream: stream,
-		Tools:  req.Tools,
+	}
+
+	// Only set Tools if it's not empty to avoid upstream validation errors
+	// that reject empty tools arrays.
+	if len(req.Tools) > 0 && !isEmptyJSON(req.Tools) {
+		out.Tools = req.Tools
 	}
 
 	if stream {
