@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential curl \
-    && pip install --no-cache-dir "headroom-ai[proxy,ml]" \
+    && pip install --no-cache-dir "headroom-ai[all]" \
     && apt-get purge -y --auto-remove build-essential \
     && rm -rf /var/lib/apt/lists/*
 

@@ -54,38 +54,17 @@ services:
     devices:
       - nvidia.com/gpu=all
 
-  litellm:
-    image: ghcr.io/berriai/litellm:main-latest
-    restart: unless-stopped
-    depends_on:
-      - vllm
-    environment:
-      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-local-change-me}
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
-      - VLLM_API_KEY=${VLLM_API_KEY:-change-me}
-    volumes:
-      - ./litellm-headroom.config.yaml:/app/config.yaml:ro
-    command:
-      - --config
-      - /app/config.yaml
-      - --host
-      - 0.0.0.0
-      - --port
-      - "4000"
-    expose:
-      - "4000"
-
   headroom:
     build:
       context: .
       dockerfile: Dockerfile.headroom
     restart: unless-stopped
     depends_on:
-      - litellm
+      - vllm
     ports:
       - "8787:8787"
     environment:
-      - OPENAI_API_KEY=${LITELLM_MASTER_KEY:-sk-local-change-me}
+      - OPENAI_API_KEY=${VLLM_API_KEY:-change-me}
       - HEADROOM_TELEMETRY=off
       - HEADROOM_WORKSPACE_DIR=/data
       - HEADROOM_MODE=token
@@ -98,10 +77,12 @@ services:
       - 0.0.0.0
       - --port
       - "8787"
+      - --memory
+      - --code-aware
       - --mode
       - token
       - --openai-api-url
-      - http://litellm:4000
+      - http://vllm:8000/v1
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8787/readyz"]
       interval: 30s
@@ -120,7 +101,7 @@ services:
     environment:
       - LISTEN_ADDR=:11434
       - UPSTREAM_BASE_URL=http://headroom:8787
-      - UPSTREAM_API_KEY=${LITELLM_MASTER_KEY:-sk-local-change-me}
+      - UPSTREAM_API_KEY=${VLLM_API_KEY:-change-me}
       - UPSTREAM_MODEL=qwen3:latest
       - MODEL_NAME=qwen3:latest
       - MODEL_CONTEXT_LENGTH=65536

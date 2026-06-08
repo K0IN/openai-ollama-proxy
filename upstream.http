@@ -2,9 +2,9 @@
 ### Requires VS Code REST Client extension
 ### Talks directly to the upstream OpenAI-compatible endpoints.
 
-@host = http://127.0.0.1:8000
+@host = http://host.docker.internal:11434
 @apiKey = localdev
-@model = default
+@model = qwen3:latest
 
 ### Health check
 GET {{host}}/v1/models HTTP/1.1
