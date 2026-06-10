@@ -103,6 +103,11 @@ func (server *Server) handleGenerateNonStream(w http.ResponseWriter, body io.Rea
 	}
 	timings.markComplete()
 
+	// Record token stats
+	if openAIResp.Usage != nil {
+		server.stats.Record(model, openAIResp.Usage.PromptTokens, openAIResp.Usage.CompletionTokens)
+	}
+
 	ollamaResp := translate.OpenAIChatToOllamaGenerate(openAIResp, model)
 	applyObservedGenerateTimings(&ollamaResp, timings)
 	w.Header().Set("Content-Type", "application/json")
@@ -161,6 +166,8 @@ func (server *Server) handleGenerateStream(w http.ResponseWriter, body io.Reader
 			timings.markComplete()
 			applyObservedGenerateTimings(&ollamaChunk, timings)
 			sentFinal = true
+			// Record token stats from final chunk
+			server.stats.Record(model, ollamaChunk.PromptEvalCount, ollamaChunk.EvalCount)
 		}
 
 		out, err := json.Marshal(ollamaChunk)

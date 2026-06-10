@@ -101,6 +101,12 @@ func (server *Server) handleOpenAIChat(w http.ResponseWriter, r *http.Request) {
 			log.Printf("<<< RESPONSE (openai passthrough) normalized: %s", string(normalized))
 		}
 
+		// Record token stats from OpenAI response
+		var openAIResp types.OpenAIChatResponse
+		if err := json.Unmarshal(normalized, &openAIResp); err == nil && openAIResp.Usage != nil {
+			server.stats.Record(openAIResp.Model, openAIResp.Usage.PromptTokens, openAIResp.Usage.CompletionTokens)
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(resp.StatusCode)
 		if _, err := w.Write(normalized); err != nil {

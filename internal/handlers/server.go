@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/k0in/openai-ollama-proxy/internal/config"
+	"github.com/k0in/openai-ollama-proxy/internal/stats"
 	"github.com/k0in/openai-ollama-proxy/internal/types"
 )
 
@@ -24,6 +25,7 @@ type Server struct {
 	// requestClient is used for short upstream calls (embeddings, models list,
 	// health probes). client is used for streaming chat/generate completions.
 	requestClient *http.Client
+	stats         *stats.Stats
 }
 
 type modelMetadata struct {
@@ -46,7 +48,7 @@ func New(cfg config.Config, client *http.Client) *Server {
 		client = config.NewHTTPClient(cfg)
 	}
 
-	return &Server{cfg: cfg, client: client, requestClient: client}
+	return &Server{cfg: cfg, client: client, requestClient: client, stats: stats.New()}
 }
 
 // NewWithClients constructs a Server backed by separate HTTP clients for
@@ -61,7 +63,7 @@ func NewWithClients(cfg config.Config, streamClient, requestClient *http.Client)
 		requestClient = config.NewRequestHTTPClient(cfg)
 	}
 
-	return &Server{cfg: cfg, client: streamClient, requestClient: requestClient}
+	return &Server{cfg: cfg, client: streamClient, requestClient: requestClient, stats: stats.New()}
 }
 
 func (server *Server) Routes() http.Handler {
@@ -88,6 +90,8 @@ func (server *Server) Routes() http.Handler {
 	mux.HandleFunc("/v1/embeddings", server.handleOpenAIEmbeddings)
 	mux.HandleFunc("/chat/completions", server.handleOpenAIChat)
 	mux.HandleFunc("/v1/chat/completions", server.handleOpenAIChat)
+
+	mux.HandleFunc("/stats", server.handleStats)
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodHead {

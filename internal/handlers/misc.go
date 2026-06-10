@@ -194,6 +194,37 @@ func (server *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	_, _ = fmt.Fprint(w, "Ollama is running")
 }
 
+func (server *Server) handleStats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	snapshot := server.stats.Snapshot()
+
+	resp := map[string]interface{}{
+		"model": snapshot.Model,
+		"stats": map[string]interface{}{
+			// Lifetime totals
+			"total_input_tokens":  snapshot.TotalInput,
+			"total_output_tokens": snapshot.TotalOutput,
+			"total_tokens":        snapshot.TotalInput + snapshot.TotalOutput,
+			"total_requests":      snapshot.Requests,
+			"uptime_seconds":      snapshot.Uptime.Seconds(),
+			// Current request (most recent)
+			"current_input_tokens":  snapshot.CurrentInput,
+			"current_output_tokens": snapshot.CurrentOutput,
+			// Rates (tokens/second over last 10s window)
+			"input_tokens_per_sec":  snapshot.InputPerSecond,
+			"output_tokens_per_sec": snapshot.OutputPerSecond,
+			"tokens_per_sec":        snapshot.InputPerSecond + snapshot.OutputPerSecond,
+		},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
 func toModelDetails(metadata modelMetadata) types.OllamaModelDetails {
 	return types.OllamaModelDetails{
 		ParentModel:       metadata.ParentModel,

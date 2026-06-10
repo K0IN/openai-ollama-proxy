@@ -2,9 +2,13 @@ package handlers
 
 import (
 	"bufio"
+	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 	"time"
+
+	"github.com/k0in/openai-ollama-proxy/internal/types"
 )
 
 func (server *Server) proxyOpenAIStream(w http.ResponseWriter, resp *http.Response, reqSummary string) {
@@ -28,11 +32,27 @@ func (server *Server) proxyOpenAIStream(w http.ResponseWriter, resp *http.Respon
 	scanner := bufio.NewScanner(resp.Body)
 	// See chat.go for sizing rationale.
 	scanner.Buffer(make([]byte, 0, 256*1024), 10*1024*1024)
+
+	// Track the last chunk with usage for stats recording
+	var lastChunkWithUsage types.OpenAIChatResponse
+
 	for scanner.Scan() {
 		lineText := server.normalizeOpenAIStreamLine(scanner.Text())
 		line := []byte(lineText)
 		chunkCount++
 		byteCount += len(line) + 1
+
+		// Try to parse the line as a JSON chunk to track usage
+		if strings.HasPrefix(lineText, "data: ") {
+			data := strings.TrimPrefix(lineText, "data: ")
+			if data != "[DONE]" {
+				var chunk types.OpenAIChatResponse
+				if err := json.Unmarshal([]byte(data), &chunk); err == nil && chunk.Usage != nil {
+					lastChunkWithUsage = chunk
+				}
+			}
+		}
+
 		if !loggedFirstChunk {
 			firstChunkLatency = time.Since(streamStart)
 			loggedFirstChunk = true
@@ -57,6 +77,11 @@ func (server *Server) proxyOpenAIStream(w http.ResponseWriter, resp *http.Respon
 		log.Printf("openai chat proxy stream error after %s firstChunk=%s chunks=%d bytes=%d canFlush=%t | %s: %v",
 			time.Since(streamStart).Round(time.Millisecond), firstChunkLatency.Round(time.Millisecond), chunkCount, byteCount, canFlush, reqSummary, err)
 		return
+	}
+
+	// Record token stats from the last chunk with usage
+	if lastChunkWithUsage.Usage != nil && lastChunkWithUsage.Model != "" {
+		server.stats.Record(lastChunkWithUsage.Model, lastChunkWithUsage.Usage.PromptTokens, lastChunkWithUsage.Usage.CompletionTokens)
 	}
 
 	log.Printf("openai chat stream complete in %s firstChunk=%s chunks=%d bytes=%d canFlush=%t content-type=%q | %s",
