@@ -16,7 +16,6 @@ type tokenEvent struct {
 type Stats struct {
 	mu        sync.Mutex
 	startTime time.Time
-	model     string
 	// Lifetime totals
 	totalInput  int
 	totalOutput int
