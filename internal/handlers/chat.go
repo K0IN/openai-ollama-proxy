@@ -123,7 +123,7 @@ func (server *Server) handleChatNonStream(w http.ResponseWriter, body io.Reader,
 
 	// Record token stats
 	if openAIResp.Usage != nil {
-		server.stats.Record(model, openAIResp.Usage.PromptTokens, openAIResp.Usage.CompletionTokens)
+		server.stats.Record(model, openAIResp.Usage.PromptTokens, openAIResp.Usage.CompletionTokens, time.Duration(timings.evalDuration()))
 	}
 
 	ollamaResp := translate.OpenAIChatToOllama(openAIResp, model)
@@ -249,7 +249,7 @@ func (server *Server) handleChatStream(w http.ResponseWriter, body io.Reader, mo
 			timings.markComplete()
 			applyObservedChatTimings(&ollamaChunk, timings)
 			// Record token stats from the final chunk
-			server.stats.Record(model, ollamaChunk.PromptEvalCount, ollamaChunk.EvalCount)
+			server.stats.Record(model, ollamaChunk.PromptEvalCount, ollamaChunk.EvalCount, time.Duration(timings.evalDuration()))
 			sentFinal = true
 		}
 

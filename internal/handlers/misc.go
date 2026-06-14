@@ -214,10 +214,14 @@ func (server *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 			// Current request (most recent)
 			"current_input_tokens":  snapshot.CurrentInput,
 			"current_output_tokens": snapshot.CurrentOutput,
-			// Rates (tokens/second over last 10s window)
+			// Current rates (10s sliding window)
 			"input_tokens_per_sec":  snapshot.InputPerSecond,
 			"output_tokens_per_sec": snapshot.OutputPerSecond,
 			"tokens_per_sec":        snapshot.InputPerSecond + snapshot.OutputPerSecond,
+			// Averages across the last 10 requests
+			"avg_input_tokens_per_sec":  snapshot.AvgInputTokensPerSec,
+			"avg_output_tokens_per_sec": snapshot.AvgOutputTokensPerSec,
+			"avg_tokens_per_sec":        snapshot.AvgTokensPerSec,
 		},
 	}
 

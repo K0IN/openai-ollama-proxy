@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	applogging "github.com/k0in/openai-ollama-proxy/internal/logging"
 	"github.com/k0in/openai-ollama-proxy/internal/types"
@@ -62,6 +63,8 @@ func (server *Server) handleOpenAIChat(w http.ResponseWriter, r *http.Request) {
 		log.Printf(">>> UPSTREAM (openai passthrough) POST %s/v1/chat/completions (%d bytes):\n  %s", server.cfg.UpstreamBaseURL, len(payload), string(applogging.RedactJSONForLog(payload)))
 	}
 
+	timings := newObservedTimings()
+
 	resp, err := server.doUpstreamChatWithRetry(r.Context(), payload)
 	if err != nil {
 		log.Printf("upstream openai-chat error: %v | %s", err, reqSummary)
@@ -69,6 +72,7 @@ func (server *Server) handleOpenAIChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = resp.Body.Close() }()
+	timings.markResponseStart()
 
 	if server.cfg.Debug {
 		log.Printf("<<< UPSTREAM (openai passthrough) %d | content-type=%q", resp.StatusCode, resp.Header.Get("Content-Type"))
@@ -101,10 +105,12 @@ func (server *Server) handleOpenAIChat(w http.ResponseWriter, r *http.Request) {
 			log.Printf("<<< RESPONSE (openai passthrough) normalized: %s", string(normalized))
 		}
 
+		timings.markComplete()
+
 		// Record token stats from OpenAI response
 		var openAIResp types.OpenAIChatResponse
 		if err := json.Unmarshal(normalized, &openAIResp); err == nil && openAIResp.Usage != nil {
-			server.stats.Record(openAIResp.Model, openAIResp.Usage.PromptTokens, openAIResp.Usage.CompletionTokens)
+			server.stats.Record(openAIResp.Model, openAIResp.Usage.PromptTokens, openAIResp.Usage.CompletionTokens, time.Duration(timings.evalDuration()))
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -115,7 +121,7 @@ func (server *Server) handleOpenAIChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	server.proxyOpenAIStream(w, resp, reqSummary)
+	server.proxyOpenAIStream(w, resp, reqSummary, timings)
 }
 
 func (server *Server) handleOpenAIEmbeddings(w http.ResponseWriter, r *http.Request) {

@@ -91,6 +91,10 @@ func (server *Server) Routes() http.Handler {
 	mux.HandleFunc("/chat/completions", server.handleOpenAIChat)
 	mux.HandleFunc("/v1/chat/completions", server.handleOpenAIChat)
 
+	// Anthropic Messages API routes
+	mux.HandleFunc("/messages", server.handleAnthropicMessages)
+	mux.HandleFunc("/v1/messages", server.handleAnthropicMessages)
+
 	mux.HandleFunc("/stats", server.handleStats)
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

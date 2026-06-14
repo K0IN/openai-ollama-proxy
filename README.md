@@ -2,7 +2,9 @@
 
 Proxy that translates Ollama API requests to OpenAI-compatible API requests. Lets Ollama clients talk to **any** OpenAI-compatible API (vLLM, Ollama, LM Studio, localai, etc.).
 
-Works with Github copilot (Ollama integration) and the Ollama CLI.
+Also includes **Anthropic Messages API support** — meaning tools like **[Claude Code](https://github.com/anthropics/claude-code)** can use the proxy to talk to any OpenAI-compatible backend.
+
+Works with Github copilot (Ollama integration), Ollama CLI, and Claude Code CLI.
 
 > **Tested on RTX 5090** — All benchmarks and examples in this repository were validated on an NVIDIA RTX 5090 GPU.
 
@@ -17,7 +19,7 @@ So you can use YOUR models with YOUR development tools as you want, and not be f
 ## Architecture
 
 ```
-GitHub Copilot (vscode) / Ollama client
+GitHub Copilot (vscode) / Ollama client / Claude Code CLI
         │
         ▼
 ┌─────────────────┐
@@ -30,6 +32,15 @@ GitHub Copilot (vscode) / Ollama client
 │  OpenAI-compatible    │  :8000
 │  API (vLLM/Ollama/…) │
 └──────────────────────┘
+```
+
+### Anthropic API route
+
+The proxy exposes Anthropic Messages API-compatible endpoints at `/v1/messages` and `/messages`. This allows Anthropic SDK clients and tools like Claude Code to connect to the proxy and use any OpenAI-compatible upstream backend. The proxy performs bidirectional translation:
+
+- Anthropic **request** → OpenAI chat completion request (upstream)
+- OpenAI chat completion **response** → Anthropic Messages API response (to client)
+- Streaming events from OpenAI SSE are translated to Anthropic SSE events (`message_start`, `content_block_start`, `content_block_delta`, `content_block_stop`, `message_delta`, `message_stop`)
 ```
 
 ## Run
@@ -125,6 +136,18 @@ OLLAMA_HOST=http://localhost:11434 ollama run qwen3:latest "hello"
 # or run ollama in docker
 docker run -it --entrypoint ollama -e OLLAMA_HOST="http://host.docker.internal:11434" docker.io/ollama/ollama run qwen3:latest "hello"
 ```
+
+## Use with Claude Code CLI
+
+[Claude Code](https://github.com/anthropics/claude-code) is Anthropic's agentic coding tool. You can point it at this proxy to use any upstream backend instead of Anthropic's API:
+
+```bash
+ANTHROPIC_BASE_URL=http://localhost:11434 ANTHROPIC_MODEL=my-model ANTHROPIC_AUTH_TOKEN=ollam claude
+```
+
+The proxy translates the Anthropic Messages API to OpenAI-compatible requests, so Claude Code's agentic loop, tool use, and streaming all work through any upstream that supports OpenAI chat completions with tools.
+
+**Note:** Claude Code requires tool support. Make sure your upstream backend supports OpenAI-format tool calls.
 
 ## Missing features
 

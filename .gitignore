@@ -35,3 +35,5 @@ coverage.out
 .env
 .env.*
 *.sarif
+proxy
+docker-compose-china.yml

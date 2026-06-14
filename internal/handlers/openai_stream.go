@@ -11,7 +11,7 @@ import (
 	"github.com/k0in/openai-ollama-proxy/internal/types"
 )
 
-func (server *Server) proxyOpenAIStream(w http.ResponseWriter, resp *http.Response, reqSummary string) {
+func (server *Server) proxyOpenAIStream(w http.ResponseWriter, resp *http.Response, reqSummary string, timings *observedTimings) {
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache, no-transform")
 	w.Header().Set("Connection", "keep-alive")
@@ -42,13 +42,19 @@ func (server *Server) proxyOpenAIStream(w http.ResponseWriter, resp *http.Respon
 		chunkCount++
 		byteCount += len(line) + 1
 
-		// Try to parse the line as a JSON chunk to track usage
+		// Try to parse the line as a JSON chunk to track usage and timing
 		if strings.HasPrefix(lineText, "data: ") {
 			data := strings.TrimPrefix(lineText, "data: ")
 			if data != "[DONE]" {
 				var chunk types.OpenAIChatResponse
-				if err := json.Unmarshal([]byte(data), &chunk); err == nil && chunk.Usage != nil {
-					lastChunkWithUsage = chunk
+				if err := json.Unmarshal([]byte(data), &chunk); err == nil {
+					if chunk.Usage != nil {
+						lastChunkWithUsage = chunk
+					}
+					// Mark first visible output on first chunk with actual content
+					if len(chunk.Choices) > 0 && chunk.Choices[0].Delta != nil && chunk.Choices[0].Delta.Content != nil && *chunk.Choices[0].Delta.Content != "" {
+						timings.markFirstVisibleOutput()
+					}
 				}
 			}
 		}
@@ -79,9 +85,11 @@ func (server *Server) proxyOpenAIStream(w http.ResponseWriter, resp *http.Respon
 		return
 	}
 
+	timings.markComplete()
+
 	// Record token stats from the last chunk with usage
 	if lastChunkWithUsage.Usage != nil && lastChunkWithUsage.Model != "" {
-		server.stats.Record(lastChunkWithUsage.Model, lastChunkWithUsage.Usage.PromptTokens, lastChunkWithUsage.Usage.CompletionTokens)
+		server.stats.Record(lastChunkWithUsage.Model, lastChunkWithUsage.Usage.PromptTokens, lastChunkWithUsage.Usage.CompletionTokens, time.Duration(timings.evalDuration()))
 	}
 
 	log.Printf("openai chat stream complete in %s firstChunk=%s chunks=%d bytes=%d canFlush=%t content-type=%q | %s",

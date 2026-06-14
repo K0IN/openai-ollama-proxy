@@ -10,6 +10,8 @@
   - [Models](#models)
   - [Chat Completions](#chat-completions-1)
   - [Embeddings](#embeddings-1)
+- [Anthropic API Endpoints](#anthropic-api-endpoints)
+  - [Messages](#messages)
 - [Proxy Endpoints](#proxy-endpoints)
   - [Stats](#stats)
   - [Health](#health)
@@ -355,6 +357,85 @@ Generate embeddings for input text (OpenAI format).
 
 ---
 
+## Anthropic API Endpoints
+
+Anthropic-compatible endpoints for clients that speak the Anthropic Messages API format (e.g., Claude Code CLI).
+
+### Messages
+
+**`POST /messages`** or **`POST /v1/messages`**
+
+Send a messages request in Anthropic format. The proxy translates it to an OpenAI chat completion request, forwards it upstream, and translates the response back.
+
+**Request Body:**
+```json
+{
+  "model": "string",
+  "max_tokens": 8192,
+  "messages": [
+    {
+      "role": "user" | "assistant",
+      "content": "Hello!"
+    }
+  ],
+  "system": "You are a helpful assistant.",
+  "stream": boolean (optional, default: false),
+  "temperature": 0.7,
+  "top_p": 0.9,
+  "top_k": 40,
+  "stop_sequences": ["\\n\\n"],
+  "tools": [
+    {
+      "name": "get_weather",
+      "description": "Get the weather",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "location": { "type": "string" }
+        }
+      }
+    }
+  ]
+}
+```
+
+**Response (non-streaming):**
+```json
+{
+  "id": "msg_xxx",
+  "type": "message",
+  "role": "assistant",
+  "content": [
+    {
+      "type": "text",
+      "text": "Hello! How can I help you today?"
+    }
+  ],
+  "model": "string",
+  "stop_reason": "end_turn",
+  "usage": {
+    "input_tokens": 10,
+    "output_tokens": 50
+  }
+}
+```
+
+**Response (streaming):**
+Returns SSE stream of Anthropic events (`message_start`, `content_block_start`, `content_block_delta`, `content_block_stop`, `message_delta`, `message_stop`).
+
+**Error Response:**
+```json
+{
+  "type": "error",
+  "error": {
+    "type": "invalid_request_error",
+    "message": "description of the error"
+  }
+}
+```
+
+---
+
 ## Proxy Endpoints
 
 Proxy-specific endpoints for monitoring and health checks.
@@ -379,7 +460,10 @@ Get real-time statistics about the proxy. Returns JSON with lifetime totals, cur
     "current_output_tokens": 500,
     "input_tokens_per_sec": 15.5,
     "output_tokens_per_sec": 45.2,
-    "tokens_per_sec": 60.7
+    "tokens_per_sec": 60.7,
+    "avg_input_tokens_per_sec": 12.3,
+    "avg_output_tokens_per_sec": 36.0,
+    "avg_tokens_per_sec": 48.3
   }
 }
 ```
@@ -398,6 +482,9 @@ Get real-time statistics about the proxy. Returns JSON with lifetime totals, cur
 | `input_tokens_per_sec` | float | Input token rate (10s sliding window) |
 | `output_tokens_per_sec` | float | Output token rate (10s sliding window) |
 | `tokens_per_sec` | float | Combined token rate (10s sliding window) |
+| `avg_input_tokens_per_sec` | float | Average input tokens/sec across the last 10 requests |
+| `avg_output_tokens_per_sec` | float | Average output tokens/sec across the last 10 requests |
+| `avg_tokens_per_sec` | float | Average total tokens/sec across the last 10 requests |
 
 **Example usage (waybar):**
 ```bash

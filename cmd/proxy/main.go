@@ -23,6 +23,7 @@ func main() {
 	log.Printf("  upstream URL:        %s", cfg.UpstreamBaseURL)
 	log.Printf("  upstream model:      %s", cfg.UpstreamModel)
 	log.Printf("  Ollama model:        %s", cfg.ModelName)
+	log.Printf("  Anthropic API:       %s/v1/messages", cfg.ListenAddr)
 	log.Printf("  max request bytes:   %d", cfg.MaxRequestBytes)
 	log.Printf("  request timeout:     %s", cfg.HTTPRequestTimeout)
 	log.Printf("  stream timeout:      %s", cfg.HTTPStreamTimeout)
