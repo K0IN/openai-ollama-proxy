@@ -102,16 +102,43 @@ func (server *Server) handleBlobs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (server *Server) handleTags(w http.ResponseWriter, r *http.Request) {
-	metadata := server.currentModelMetadata(r.Context())
+	models := server.router.AllModels()
 	resp := types.OllamaTagsResponse{
-		Models: []types.OllamaModelInfo{{
+		Models: make([]types.OllamaModelInfo, 0, len(models)),
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	if len(models) > 0 {
+		for _, m := range models {
+			entry, _ := server.router.Lookup(m)
+			meta := modelMetadata{
+				ContextLength: entry.ContextLength,
+				Family:        "transformer",
+				Format:        "unknown",
+				ParameterSize: "unknown",
+				Quantization:  "unknown",
+			}
+			applyModelNameHints(&meta, m)
+			resp.Models = append(resp.Models, types.OllamaModelInfo{
+				Name:       m,
+				Model:      m,
+				ModifiedAt: now,
+				Size:       0,
+				Digest:     "sha256:proxy",
+				Details:    toModelDetails(meta),
+			})
+		}
+	} else {
+		metadata := server.currentModelMetadata(r.Context())
+		resp.Models = append(resp.Models, types.OllamaModelInfo{
 			Name:       server.cfg.ModelName,
 			Model:      server.cfg.ModelName,
-			ModifiedAt: time.Now().UTC().Format(time.RFC3339),
+			ModifiedAt: now,
 			Size:       0,
-			Digest:     "proxy",
+			Digest:     "sha256:proxy",
 			Details:    toModelDetails(metadata),
-		}},
+		})
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -124,13 +151,34 @@ func (server *Server) handleShow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	metadata := server.currentModelMetadata(r.Context())
+	var req types.OllamaShowRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err.Error() != "EOF" {
+		http.Error(w, "invalid json: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var meta modelMetadata
+	if entry, ok := server.router.Lookup(req.Model); ok {
+		meta = modelMetadata{
+			ContextLength: entry.ContextLength,
+			Family:        "transformer",
+			ParentModel:   entry.UpstreamModel,
+			Format:        "unknown",
+			ParameterSize: "unknown",
+			Quantization:  "unknown",
+		}
+		applyModelNameHints(&meta, req.Model)
+	} else {
+		// Fallback for flat config: probe upstream for metadata.
+		meta = server.currentModelMetadata(r.Context())
+	}
+
 	resp := types.OllamaShowResponse{
 		Modelfile:    "# proxied model",
-		Parameters:   fmt.Sprintf("num_ctx %d", metadata.ContextLength),
+		Parameters:   fmt.Sprintf("num_ctx %d", meta.ContextLength),
 		Template:     "",
-		Details:      toModelDetails(metadata),
-		ModelInfo:    ollamaModelInfo(metadata),
+		Details:      toModelDetails(meta),
+		ModelInfo:    ollamaModelInfo(meta),
 		Capabilities: []string{"completion", "tools"},
 	}
 
@@ -145,17 +193,46 @@ func (server *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 }
 
 func (server *Server) handlePs(w http.ResponseWriter, r *http.Request) {
-	metadata := server.currentModelMetadata(r.Context())
+	models := server.router.AllModels()
 	resp := types.OllamaPsResponse{
-		Models: []types.OllamaPsModel{{
+		Models: make([]types.OllamaPsModel, 0, len(models)),
+	}
+
+	now := time.Now().UTC()
+	expiresAt := now.Add(24 * time.Hour).UTC().Format(time.RFC3339)
+
+	if len(models) > 0 {
+		for _, m := range models {
+			entry, _ := server.router.Lookup(m)
+			meta := modelMetadata{
+				ContextLength: entry.ContextLength,
+				Family:        "transformer",
+				Format:        "unknown",
+				ParameterSize: "unknown",
+				Quantization:  "unknown",
+			}
+			applyModelNameHints(&meta, m)
+			resp.Models = append(resp.Models, types.OllamaPsModel{
+				Name:      m,
+				Model:     m,
+				Size:      0,
+				Digest:    "sha256:proxy",
+				Details:   toModelDetails(meta),
+				ExpiresAt: expiresAt,
+				SizeVRAM:  0,
+			})
+		}
+	} else {
+		metadata := server.currentModelMetadata(r.Context())
+		resp.Models = append(resp.Models, types.OllamaPsModel{
 			Name:      server.cfg.ModelName,
 			Model:     server.cfg.ModelName,
 			Size:      0,
-			Digest:    "proxy",
+			Digest:    "sha256:proxy",
 			Details:   toModelDetails(metadata),
-			ExpiresAt: time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339),
+			ExpiresAt: expiresAt,
 			SizeVRAM:  0,
-		}},
+		})
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -205,20 +282,16 @@ func (server *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]interface{}{
 		"model": snapshot.Model,
 		"stats": map[string]interface{}{
-			// Lifetime totals
-			"total_input_tokens":  snapshot.TotalInput,
-			"total_output_tokens": snapshot.TotalOutput,
-			"total_tokens":        snapshot.TotalInput + snapshot.TotalOutput,
-			"total_requests":      snapshot.Requests,
-			"uptime_seconds":      snapshot.Uptime.Seconds(),
-			// Current request (most recent)
-			"current_input_tokens":  snapshot.CurrentInput,
-			"current_output_tokens": snapshot.CurrentOutput,
-			// Current rates (10s sliding window)
-			"input_tokens_per_sec":  snapshot.InputPerSecond,
-			"output_tokens_per_sec": snapshot.OutputPerSecond,
-			"tokens_per_sec":        snapshot.InputPerSecond + snapshot.OutputPerSecond,
-			// Averages across the last 10 requests
+			"total_input_tokens":        snapshot.TotalInput,
+			"total_output_tokens":       snapshot.TotalOutput,
+			"total_tokens":              snapshot.TotalInput + snapshot.TotalOutput,
+			"total_requests":            snapshot.Requests,
+			"uptime_seconds":            snapshot.Uptime.Seconds(),
+			"current_input_tokens":      snapshot.CurrentInput,
+			"current_output_tokens":     snapshot.CurrentOutput,
+			"input_tokens_per_sec":      snapshot.InputPerSecond,
+			"output_tokens_per_sec":     snapshot.OutputPerSecond,
+			"tokens_per_sec":            snapshot.InputPerSecond + snapshot.OutputPerSecond,
 			"avg_input_tokens_per_sec":  snapshot.AvgInputTokensPerSec,
 			"avg_output_tokens_per_sec": snapshot.AvgOutputTokensPerSec,
 			"avg_tokens_per_sec":        snapshot.AvgTokensPerSec,

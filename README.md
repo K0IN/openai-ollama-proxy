@@ -142,7 +142,7 @@ docker run -it --entrypoint ollama -e OLLAMA_HOST="http://host.docker.internal:1
 [Claude Code](https://github.com/anthropics/claude-code) is Anthropic's agentic coding tool. You can point it at this proxy to use any upstream backend instead of Anthropic's API:
 
 ```bash
-ANTHROPIC_BASE_URL=http://localhost:11434 ANTHROPIC_MODEL=my-model ANTHROPIC_AUTH_TOKEN=ollam claude
+ANTHROPIC_BASE_URL=http://localhost:11434 ANTHROPIC_MODEL=my-model ANTHROPIC_AUTH_TOKEN=ollama claude
 ```
 
 The proxy translates the Anthropic Messages API to OpenAI-compatible requests, so Claude Code's agentic loop, tool use, and streaming all work through any upstream that supports OpenAI chat completions with tools.

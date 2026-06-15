@@ -37,3 +37,7 @@ coverage.out
 *.sarif
 proxy
 docker-compose-china.yml
+main
+proxy-bin
+china.toml
+dev-china.toml

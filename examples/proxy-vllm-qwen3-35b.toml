@@ -1,0 +1,23 @@
+# Proxy configuration for vLLM + Qwen3.6 35B (AWQ 4bit)
+# Used with: examples/docker-compose-qwen3-35b.yml
+
+listen_addr = ":11434"
+ollama_version = "0.6.4"
+model_context_length = 65536
+
+upstream_startup_wait = "30m"
+upstream_retry_interval = "2s"
+
+http_request_timeout = "30s"
+http_stream_timeout = "5m"
+shutdown_timeout = "30s"
+max_request_bytes = 33554432
+
+[[upstream]]
+url = "http://vllm:8000"
+api_key = "change-me"
+
+[[upstream.models]]
+upstream = "Qwen3.6"
+local = "qwen3:latest"
+context_length = 65536

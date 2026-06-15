@@ -1,0 +1,63 @@
+# Proxy configuration file — v2 (TOML)
+# =============================================================================
+# This file is baked into the Docker image as /proxy.toml.
+# For Docker deployments, mount your own config and set:
+#   CONFIG_FILE=/etc/proxy/config.toml
+#
+# For standalone / local use:
+#   export CONFIG_FILE=/path/to/proxy.toml
+# =============================================================================
+
+listen_addr = ":11434"
+ollama_version = "0.6.4"
+model_context_length = 32768
+
+# --- Optional settings -------------------------------------------------------
+# proxy_api_key = "sk-your-secret-key"
+# debug = true
+# anthropic_base_url = "https://api.anthropic.com"
+# anthropic_api_key = "sk-ant-..."
+# log_max_body_bytes = 4096
+# upstream_startup_wait = "30s"
+# upstream_retry_interval = "5s"
+# http_request_timeout = "30s"
+# http_stream_timeout = "5m"
+# shutdown_timeout = "30s"
+# max_request_bytes = 33554432
+
+# --- Upstream definitions ----------------------------------------------------
+# Each [[upstream]] block defines a backend server that speaks the
+# OpenAI-compatible /v1/chat/completions API.
+#
+# [[upstream.models]] entries map the upstream model name to a local alias.
+# The optional `context_length` overrides the global model_context_length.
+
+# Example: single Ollama instance running locally
+[[upstream]]
+url = "http://localhost:11434"
+
+[[upstream.models]]
+upstream = "qwen3:27b"
+local = "qwen3:27b"
+context_length = 32768
+
+[[upstream.models]]
+upstream = "qwen3:14b"
+local = "qwen3:14b"
+context_length = 32768
+
+# --- Multi-upstream example (uncomment to use) -------------------------------
+# [[upstream]]
+# url = "https://api.openai.com/v1"
+# api_key = "sk-..."
+#
+# [[upstream.models]]
+# upstream = "gpt-4o"
+# local = "gpt-4o"
+# context_length = 128000
+#
+# [[upstream.models]]
+# upstream = "gpt-4o-mini"
+# local = "gpt-4o-mini"
+# context_length = 128000
+

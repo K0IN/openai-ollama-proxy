@@ -20,6 +20,31 @@ func (server *Server) handleOpenAIModels(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	models := server.router.AllModels()
+	if len(models) > 0 {
+		resp := types.OpenAIModelListResponse{
+			Object: "list",
+			Data:   make([]types.OpenAIModel, 0, len(models)),
+		}
+		for _, m := range models {
+			entry, ok := server.router.Lookup(m)
+			ctxLen := server.cfg.ModelContextLength
+			if ok && entry.ContextLength > 0 {
+				ctxLen = entry.ContextLength
+			}
+			resp.Data = append(resp.Data, types.OpenAIModel{
+				Object:      "model",
+				ID:          m,
+				OwnedBy:     "openai-ollama-proxy",
+				MaxModelLen: ctxLen,
+			})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	// Fallback for legacy flat config.
 	metadata := server.currentModelMetadata(r.Context())
 	resp := types.OpenAIModelListResponse{
 		Object: "list",
@@ -49,23 +74,37 @@ func (server *Server) handleOpenAIChat(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = r.Body.Close() }()
 
+	// Extract the model name from the original request before rewriting.
+	var origPayload map[string]any
+	_ = json.Unmarshal(body, &origPayload)
+	reqModel, _ := origPayload["model"].(string)
+	baseURL, apiKey, _, _ := server.resolveRouteForModel(reqModel)
+	if baseURL == "" {
+		upstreams := server.router.AllUpstreams()
+		if len(upstreams) > 0 {
+			baseURL = upstreams[0].URL
+			apiKey = upstreams[0].APIKey
+		}
+	}
+
 	payload, strippedTools, err := server.rewriteRequestForChat(body)
 	if err != nil {
 		http.Error(w, "invalid json: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 	reqSummary := requestDebugSummary(payload)
+
 	if server.cfg.Debug {
 		log.Printf("openai chat request start | %s | accept=%q content-type=%q", reqSummary, applogging.SanitizeForLog(r.Header.Get("Accept")), applogging.SanitizeForLog(r.Header.Get("Content-Type"))) // #nosec G706 -- inputs sanitized via SanitizeForLog
 		if strippedTools {
 			log.Printf("openai chat request normalized | tools stripped for direct-response compatibility")
 		}
-		log.Printf(">>> UPSTREAM (openai passthrough) POST %s/v1/chat/completions (%d bytes):\n  %s", server.cfg.UpstreamBaseURL, len(payload), string(applogging.RedactJSONForLog(payload)))
+		log.Printf(">>> UPSTREAM (openai passthrough) POST %s/v1/chat/completions (%d bytes):\n  %s", baseURL, len(payload), string(applogging.RedactJSONForLog(payload)))
 	}
 
 	timings := newObservedTimings()
 
-	resp, err := server.doUpstreamChatWithRetry(r.Context(), payload)
+	resp, err := server.doUpstreamChatWithRetryForRoute(r.Context(), payload, baseURL, apiKey)
 	if err != nil {
 		log.Printf("upstream openai-chat error: %v | %s", err, reqSummary)
 		http.Error(w, "upstream not ready: "+err.Error(), http.StatusServiceUnavailable)
@@ -107,7 +146,6 @@ func (server *Server) handleOpenAIChat(w http.ResponseWriter, r *http.Request) {
 
 		timings.markComplete()
 
-		// Record token stats from OpenAI response
 		var openAIResp types.OpenAIChatResponse
 		if err := json.Unmarshal(normalized, &openAIResp); err == nil && openAIResp.Usage != nil {
 			server.stats.Record(openAIResp.Model, openAIResp.Usage.PromptTokens, openAIResp.Usage.CompletionTokens, time.Duration(timings.evalDuration()))
@@ -143,14 +181,26 @@ func (server *Server) handleOpenAIEmbeddings(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	upstream, err := http.NewRequestWithContext(r.Context(), http.MethodPost, server.cfg.UpstreamBaseURL+"/v1/embeddings", bytes.NewReader(payload))
+	var payloadMap map[string]any
+	_ = json.Unmarshal(payload, &payloadMap)
+	model, _ := payloadMap["model"].(string)
+	baseURL, apiKey, _, _ := server.resolveRouteForModel(model)
+	if baseURL == "" {
+		upstreams := server.router.AllUpstreams()
+		if len(upstreams) > 0 {
+			baseURL = upstreams[0].URL
+			apiKey = upstreams[0].APIKey
+		}
+	}
+
+	upstream, err := http.NewRequestWithContext(r.Context(), http.MethodPost, baseURL+"/v1/embeddings", bytes.NewReader(payload))
 	if err != nil {
 		http.Error(w, "request error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	upstream.Header.Set("Content-Type", "application/json")
-	if server.cfg.UpstreamAPIKey != "" {
-		upstream.Header.Set("Authorization", "Bearer "+server.cfg.UpstreamAPIKey)
+	if apiKey != "" {
+		upstream.Header.Set("Authorization", "Bearer "+apiKey)
 	}
 
 	resp, err := server.requestClient.Do(upstream)

@@ -11,7 +11,6 @@ import (
 	"github.com/k0in/openai-ollama-proxy/internal/types"
 )
 
-// isEmptyJSON checks if the raw JSON is an empty array or object.
 func isEmptyJSON(raw json.RawMessage) bool {
 	trimmed := strings.TrimSpace(string(raw))
 	return trimmed == "[]" || trimmed == "{}"
@@ -94,12 +93,6 @@ func ConvertMessagesToOpenAI(msgs []types.OllamaMessage) ([]types.OpenAIMessage,
 	return out, nil
 }
 
-// DetectImageMIME inspects a base64-encoded image payload and returns its
-// MIME type. It first checks well-known magic-byte prefixes that net/http's
-// sniffer mishandles or doesn't recognize (notably WebP variants and AVIF /
-// HEIC ISO Base Media containers), then falls back to http.DetectContentType
-// for everything else. Returns "image/jpeg" as a last-resort default to
-// preserve previous behaviour for opaque payloads.
 func DetectImageMIME(b64 string) string {
 	// Decode up to 512 bytes' worth of header data. http.DetectContentType
 	// uses at most the first 512 bytes; base64 inflates by 4/3, so 700 chars
@@ -133,9 +126,6 @@ func DetectImageMIME(b64 string) string {
 	return "image/jpeg"
 }
 
-// detectISOBMFFImageMIME recognises ISO Base Media File Format containers
-// (HEIC / HEIF / AVIF). Layout: 4-byte big-endian size, "ftyp" tag, 4-byte
-// major brand, 4-byte minor version, then >=1 compatible brand entries.
 func detectISOBMFFImageMIME(data []byte) string {
 	if len(data) < 12 {
 		return ""
@@ -168,10 +158,6 @@ func detectISOBMFFImageMIME(data []byte) string {
 	return ""
 }
 
-// detectRIFFImageMIME recognises RIFF-based image containers (currently only
-// WebP). http.DetectContentType handles WebP correctly when the full RIFF
-// header is present, but we duplicate the check here so a 4-byte "RIFF"
-// prefix is no longer mistaken for WebP unconditionally.
 func detectRIFFImageMIME(data []byte) string {
 	if len(data) < 12 {
 		return ""

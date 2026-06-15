@@ -44,7 +44,6 @@ func Middleware(debug bool, next http.Handler) http.Handler {
 					fmt.Fprintf(&headers, "  %s: %s\n", key, RedactHeaderValue(key, value))
 				}
 			}
-			// Tainted inputs are passed through SanitizeForLog above.
 			log.Printf(">>> %s %s | ua=%q\n%s", SanitizeForLog(r.Method), SanitizeForLog(r.URL.String()), SanitizeForLog(userAgent), headers.String()) // #nosec G706 -- inputs sanitized via SanitizeForLog
 
 			if r.Body != nil && r.Method == http.MethodPost {
@@ -66,5 +65,24 @@ func Middleware(debug bool, next http.Handler) http.Handler {
 
 		duration := time.Since(start).Round(time.Millisecond)
 		log.Printf("<<< %s %s %d %s | ua=%q", SanitizeForLog(r.Method), SanitizeForLog(r.URL.Path), recorder.status, duration, SanitizeForLog(userAgent)) // #nosec G706 -- inputs sanitized via SanitizeForLog
+	})
+}
+
+func AuthMiddleware(apikey string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if apikey == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		auth := r.Header.Get("Authorization")
+		if !strings.HasPrefix(auth, "Bearer ") || auth[len("Bearer "):] != apikey {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":{"message":"Invalid API key","type":"unauthorized_error"}}`))
+			return
+		}
+
+		next.ServeHTTP(w, r)
 	})
 }

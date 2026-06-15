@@ -2,8 +2,6 @@ package types
 
 import "encoding/json"
 
-// Anthropic Messages API types.
-
 type AnthropicMessageRequest struct {
 	Model         string             `json:"model"`
 	MaxTokens     int                `json:"max_tokens"`
@@ -20,23 +18,20 @@ type AnthropicMessageRequest struct {
 
 type AnthropicMessage struct {
 	Role    string          `json:"role"`
-	Content json.RawMessage `json:"content"` // string or []AnthropicContentBlock
+	Content json.RawMessage `json:"content"`
 }
 
 type AnthropicContentBlock struct {
-	Type string `json:"type"` // "text", "image", "tool_use", "tool_result"
+	Type string `json:"type"`
 	Text string `json:"text,omitempty"`
 
-	// For tool_use
 	ID    string          `json:"id,omitempty"`
 	Name  string          `json:"name,omitempty"`
 	Input json.RawMessage `json:"input,omitempty"`
 
-	// For tool_result
 	ToolUseID string          `json:"tool_use_id,omitempty"`
-	Content   json.RawMessage `json:"content,omitempty"` // string or []content block
+	Content   json.RawMessage `json:"content,omitempty"`
 
-	// For image
 	Source *AnthropicImageSource `json:"source,omitempty"`
 }
 
@@ -72,10 +67,8 @@ type AnthropicErrorResponse struct {
 	Error AnthropicError `json:"error"`
 }
 
-// Anthropic streaming event types.
-
 type AnthropicStreamEvent struct {
-	Type string `json:"type"` // event type sent as "event: <type>\ndata: {...}\n\n"
+	Type string `json:"type"`
 }
 
 type AnthropicMessageStartEvent struct {
@@ -96,13 +89,13 @@ type AnthropicContentBlockDeltaEvent struct {
 }
 
 type AnthropicContentBlockDelta struct {
-	Type string `json:"type"` // "text_delta", "input_json_delta"
+	Type string `json:"type"`
 	Text string `json:"text,omitempty"`
 }
 
 // For backward compatibility, AnthropicTextDelta is used as the delta field.
 type AnthropicTextDelta struct {
-	Type string `json:"type"` // "text_delta"
+	Type string `json:"type"`
 	Text string `json:"text,omitempty"`
 }
 

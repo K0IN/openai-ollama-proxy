@@ -33,7 +33,6 @@ func (server *Server) proxyOpenAIStream(w http.ResponseWriter, resp *http.Respon
 	// See chat.go for sizing rationale.
 	scanner.Buffer(make([]byte, 0, 256*1024), 10*1024*1024)
 
-	// Track the last chunk with usage for stats recording
 	var lastChunkWithUsage types.OpenAIChatResponse
 
 	for scanner.Scan() {
@@ -42,7 +41,7 @@ func (server *Server) proxyOpenAIStream(w http.ResponseWriter, resp *http.Respon
 		chunkCount++
 		byteCount += len(line) + 1
 
-		// Try to parse the line as a JSON chunk to track usage and timing
+		// Try to parse the line as a JSON chunk
 		if strings.HasPrefix(lineText, "data: ") {
 			data := strings.TrimPrefix(lineText, "data: ")
 			if data != "[DONE]" {
@@ -51,7 +50,6 @@ func (server *Server) proxyOpenAIStream(w http.ResponseWriter, resp *http.Respon
 					if chunk.Usage != nil {
 						lastChunkWithUsage = chunk
 					}
-					// Mark first visible output on first chunk with actual content
 					if len(chunk.Choices) > 0 && chunk.Choices[0].Delta != nil && chunk.Choices[0].Delta.Content != nil && *chunk.Choices[0].Delta.Content != "" {
 						timings.markFirstVisibleOutput()
 					}
@@ -87,7 +85,6 @@ func (server *Server) proxyOpenAIStream(w http.ResponseWriter, resp *http.Respon
 
 	timings.markComplete()
 
-	// Record token stats from the last chunk with usage
 	if lastChunkWithUsage.Usage != nil && lastChunkWithUsage.Model != "" {
 		server.stats.Record(lastChunkWithUsage.Model, lastChunkWithUsage.Usage.PromptTokens, lastChunkWithUsage.Usage.CompletionTokens, time.Duration(timings.evalDuration()))
 	}

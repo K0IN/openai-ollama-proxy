@@ -7,9 +7,6 @@ import (
 	"strings"
 )
 
-// redactedSensitiveHeaders is the set of HTTP headers whose values must never
-// appear in logs. Compared case-insensitively (keys are stored canonical-cased
-// via http.CanonicalHeaderKey).
 var redactedSensitiveHeaders = map[string]struct{}{
 	http.CanonicalHeaderKey("Authorization"):       {},
 	http.CanonicalHeaderKey("Proxy-Authorization"): {},
@@ -20,9 +17,6 @@ var redactedSensitiveHeaders = map[string]struct{}{
 	http.CanonicalHeaderKey("X-Auth-Token"):        {},
 }
 
-// redactedJSONFieldSubstrings matches (case-insensitive substring) JSON object
-// keys whose string values should be replaced with "[REDACTED]" in logged
-// payloads.
 var redactedJSONFieldSubstrings = []string{
 	"api_key",
 	"api-key",
@@ -33,9 +27,6 @@ var redactedJSONFieldSubstrings = []string{
 	"token",
 }
 
-// RedactHeaderValue returns the value as-is unless name matches a known
-// sensitive header, in which case it returns a fixed placeholder. The
-// returned value is always sanitized for safe inclusion in log output.
 func RedactHeaderValue(name, value string) string {
 	if _, sensitive := redactedSensitiveHeaders[http.CanonicalHeaderKey(name)]; sensitive {
 		if value == "" {
@@ -76,10 +67,6 @@ func SanitizeForLog(s string) string {
 	return string(b)
 }
 
-// RedactJSONForLog parses payload as JSON and replaces values for any keys
-// matching redactedJSONFieldSubstrings with "[REDACTED]". On any parse error
-// the original payload is returned unchanged so callers can still log
-// something useful.
 func RedactJSONForLog(payload []byte) []byte {
 	if len(payload) == 0 {
 		return payload

@@ -14,9 +14,6 @@ import (
 	"github.com/k0in/openai-ollama-proxy/internal/types"
 )
 
-// handleAnthropicMessages handles the Anthropic Messages API endpoint (/v1/messages).
-// It translates Anthropic requests to OpenAI chat completions, forwards them upstream,
-// and translates the response back to Anthropic format.
 func (server *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -41,19 +38,20 @@ func (server *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Req
 			anthropicReq.Model, anthropicReq.Stream, len(anthropicReq.Messages), truncateForLog(string(anthropicReq.System), 100))
 	}
 
-	// Default max_tokens if not set
 	maxTokens := anthropicReq.MaxTokens
 	if maxTokens <= 0 {
 		maxTokens = 8192
 	}
 
-	// Translate Anthropic request to OpenAI chat request
 	openAIReq, err := translateAnthropicToOpenAI(anthropicReq, maxTokens)
 	if err != nil {
 		writeAnthropicError(w, http.StatusBadRequest, "invalid_request_error", "translation error: "+err.Error())
 		return
 	}
-	openAIReq.Model = server.cfg.UpstreamModel
+
+	// Resolve route for the requested model.
+	baseURL, apiKey, upstreamModel, _ := server.resolveRouteForModel(anthropicReq.Model)
+	openAIReq.Model = upstreamModel
 
 	openAIBody, err := json.Marshal(openAIReq)
 	if err != nil {
@@ -62,10 +60,10 @@ func (server *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Req
 	}
 
 	if server.cfg.Debug {
-		log.Printf(">>> UPSTREAM (anthropic->openai) POST %s/v1/chat/completions (%d bytes):\n  %s", server.cfg.UpstreamBaseURL, len(openAIBody), string(applogging.RedactJSONForLog(openAIBody)))
+		log.Printf(">>> UPSTREAM (anthropic->openai) POST %s/v1/chat/completions (%d bytes):\n  %s", baseURL, len(openAIBody), string(applogging.RedactJSONForLog(openAIBody)))
 	}
 
-	resp, err := server.doUpstreamChatWithRetry(r.Context(), openAIBody)
+	resp, err := server.doUpstreamChatWithRetryForRoute(r.Context(), openAIBody, baseURL, apiKey)
 	if err != nil {
 		log.Printf("anthropic upstream error: %v", err)
 		writeAnthropicError(w, http.StatusServiceUnavailable, "api_error", "upstream not ready: "+err.Error())
@@ -84,7 +82,6 @@ func (server *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// Determine model name to use in response
 	responseModel := anthropicReq.Model
 	if responseModel == "" {
 		responseModel = server.cfg.ModelName
@@ -122,7 +119,6 @@ func (server *Server) handleAnthropicNonStream(w http.ResponseWriter, body io.Re
 
 	anthropicResp := convertOpenAIToAnthropic(openAIResp, model)
 
-	// Record token stats
 	if openAIResp.Usage != nil {
 		server.stats.Record(model, openAIResp.Usage.PromptTokens, openAIResp.Usage.CompletionTokens, time.Duration(timings.evalDuration()))
 	}
@@ -147,20 +143,6 @@ func (server *Server) handleAnthropicStream(w http.ResponseWriter, body io.Reade
 
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 0, 256*1024), 10*1024*1024)
-
-	// Anthropic SSE streaming protocol:
-	// event: message_start
-	// data: {...}\n\n
-	// event: content_block_start
-	// data: {...}\n\n
-	// event: content_block_delta
-	// data: {...}\n\n
-	// event: content_block_stop
-	// data: {...}\n\n
-	// event: message_delta
-	// data: {...}\n\n
-	// event: message_stop
-	// data: {...}\n\n
 
 	messageID := fmt.Sprintf("msg_%s_%d", model, time.Now().UnixMilli())
 	contentIndex := 0
@@ -191,9 +173,7 @@ func (server *Server) handleAnthropicStream(w http.ResponseWriter, body io.Reade
 
 		choice := chunk.Choices[0]
 
-		// Send message_start on first chunk
 		if !hasSentContentStart {
-			// Start with the message
 			msgStart := types.AnthropicMessageStartEvent{
 				Type: "message_start",
 				Message: types.AnthropicMessageResponse{
@@ -207,7 +187,6 @@ func (server *Server) handleAnthropicStream(w http.ResponseWriter, body io.Reade
 			writeAnthropicSSE(w, "message_start", msgStart)
 			flusher.Flush()
 
-			// Send content_block_start
 			contentBlockStart := types.AnthropicContentBlockStartEvent{
 				Type:  "content_block_start",
 				Index: contentIndex,
@@ -222,7 +201,6 @@ func (server *Server) handleAnthropicStream(w http.ResponseWriter, body io.Reade
 			hasSentContentStart = true
 		}
 
-		// Handle content/text delta
 		delta := choice.Delta
 		if delta != nil && delta.Content != nil && *delta.Content != "" {
 			timings.markFirstVisibleOutput()
@@ -239,12 +217,10 @@ func (server *Server) handleAnthropicStream(w http.ResponseWriter, body io.Reade
 			flusher.Flush()
 		}
 
-		// Handle tool calls from delta
 		if delta != nil && len(delta.ToolCalls) > 0 {
 			timings.markFirstVisibleOutput()
 			for _, tc := range delta.ToolCalls {
 				if tc.Function.Name != "" {
-					// This is a tool_use content block start
 					toolContentBlock := types.AnthropicContentBlockStartEvent{
 						Type:  "content_block_start",
 						Index: contentIndex + 1,
@@ -259,7 +235,6 @@ func (server *Server) handleAnthropicStream(w http.ResponseWriter, body io.Reade
 					flusher.Flush()
 					contentIndex++
 
-					// Send content_block_stop for the tool block
 					writeAnthropicSSE(w, "content_block_stop", types.AnthropicContentBlockStopEvent{
 						Type: "content_block_stop", Index: contentIndex,
 					})
@@ -268,7 +243,6 @@ func (server *Server) handleAnthropicStream(w http.ResponseWriter, body io.Reade
 			}
 		}
 
-		// Handle finish (message_delta + message_stop)
 		if choice.FinishReason != nil || chunk.Usage != nil {
 			timings.markComplete()
 
@@ -279,7 +253,6 @@ func (server *Server) handleAnthropicStream(w http.ResponseWriter, body io.Reade
 
 			stopReason := mapAnthropicStopReason(choice.FinishReason)
 
-			// Ensure content_block_stop is sent before message_delta
 			writeAnthropicSSE(w, "content_block_stop", types.AnthropicContentBlockStopEvent{
 				Type: "content_block_stop", Index: contentIndex,
 			})
@@ -304,7 +277,6 @@ func (server *Server) handleAnthropicStream(w http.ResponseWriter, body io.Reade
 			})
 			flusher.Flush()
 
-			// Record stats with timing
 			server.stats.Record(model, promptTokens, completionTokens, time.Duration(timings.evalDuration()))
 
 			return
@@ -315,7 +287,6 @@ func (server *Server) handleAnthropicStream(w http.ResponseWriter, body io.Reade
 		log.Printf("anthropic stream scanner error: %v", err)
 	}
 
-	// If we never got a finish reason, send cleanup events
 	if hasSentContentStart {
 		timings.markComplete()
 		writeAnthropicSSE(w, "content_block_stop", types.AnthropicContentBlockStopEvent{
@@ -338,21 +309,17 @@ func (server *Server) handleAnthropicStream(w http.ResponseWriter, body io.Reade
 		flusher.Flush()
 	}
 
-	// Record stats even for truncated stream (in case usage was seen)
 	if completionTokens > 0 {
 		server.stats.Record(model, promptTokens, completionTokens, time.Duration(timings.evalDuration()))
 	}
 }
 
-// translateAnthropicToOpenAI converts an Anthropic Messages API request to
-// an OpenAI chat completions request.
 func translateAnthropicToOpenAI(anthropicReq types.AnthropicMessageRequest, maxTokens int) (types.OpenAIChatRequest, error) {
 	openAIReq := types.OpenAIChatRequest{
 		Stream:    anthropicReq.Stream,
 		MaxTokens: &maxTokens,
 	}
 
-	// Translate temperature, top_p, top_k
 	if anthropicReq.Temperature != nil {
 		openAIReq.Temperature = anthropicReq.Temperature
 	}
@@ -369,10 +336,8 @@ func translateAnthropicToOpenAI(anthropicReq types.AnthropicMessageRequest, maxT
 		openAIReq.Tools = anthropicReq.Tools
 	}
 
-	// Translate messages
 	var msgs []types.OpenAIMessage
 
-	// Handle system prompt (can be a string or array of content blocks)
 	systemText := extractAnthropicSystemText(anthropicReq.System)
 	if systemText != "" {
 		systemContent, _ := json.Marshal(systemText)
@@ -392,26 +357,21 @@ func translateAnthropicToOpenAI(anthropicReq types.AnthropicMessageRequest, maxT
 	return openAIReq, nil
 }
 
-// translateAnthropicMsg converts a single Anthropic message to an OpenAI message.
 func translateAnthropicMsg(msg types.AnthropicMessage) types.OpenAIMessage {
 	openAIMsg := types.OpenAIMessage{
 		Role: msg.Role,
 	}
 
-	// Parse the content - can be a string or []AnthropicContentBlock
 	var contentStr string
 	var contentBlocks []types.AnthropicContentBlock
 
-	// Try to unmarshal as a string first
 	if err := json.Unmarshal(msg.Content, &contentStr); err == nil {
 		contentJSON, _ := json.Marshal(contentStr)
 		openAIMsg.Content = contentJSON
 		return openAIMsg
 	}
 
-	// Try as array of content blocks
 	if err := json.Unmarshal(msg.Content, &contentBlocks); err != nil {
-		// Fallback: pass through as-is
 		openAIMsg.Content = msg.Content
 		return openAIMsg
 	}
@@ -440,13 +400,10 @@ func translateAnthropicMsg(msg types.AnthropicMessage) types.OpenAIMessage {
 				},
 			})
 		case "tool_result":
-			// tool_result maps to a "tool" role message in OpenAI.
-			// We need to extract the content from the tool result.
 			var resultContent string
 			if err := json.Unmarshal(block.Content, &resultContent); err == nil {
 				textParts = append(textParts, resultContent)
 			} else {
-				// Try as array of content blocks
 				var resultBlocks []types.AnthropicContentBlock
 				if err := json.Unmarshal(block.Content, &resultBlocks); err == nil {
 					for _, rb := range resultBlocks {
@@ -464,14 +421,12 @@ func translateAnthropicMsg(msg types.AnthropicMessage) types.OpenAIMessage {
 
 	if len(toolCalls) > 0 {
 		openAIMsg.ToolCalls = toolCalls
-		// When there are tool calls, content must be non-null
 		if len(textParts) == 0 && len(imageParts) == 0 {
 			contentJSON, _ := json.Marshal("")
 			openAIMsg.Content = contentJSON
 		}
 	}
 
-	// Build content
 	if len(imageParts) > 0 {
 		parts := make([]types.OpenAIContentPart, 0, len(textParts)+len(imageParts))
 		for _, t := range textParts {
@@ -494,7 +449,6 @@ func translateAnthropicMsg(msg types.AnthropicMessage) types.OpenAIMessage {
 	return openAIMsg
 }
 
-// convertOpenAIToAnthropic converts an OpenAI chat response to Anthropic format.
 func convertOpenAIToAnthropic(openAIResp types.OpenAIChatResponse, model string) types.AnthropicMessageResponse {
 	anthropicResp := types.AnthropicMessageResponse{
 		ID:    fmt.Sprintf("msg_%s_%d", model, time.Now().UnixMilli()),
@@ -529,18 +483,14 @@ func convertOpenAIToAnthropic(openAIResp types.OpenAIChatResponse, model string)
 	return anthropicResp
 }
 
-// convertOpenAIMsgToAnthropicContent converts an OpenAI response message to
-// Anthropic content blocks.
 func convertOpenAIMsgToAnthropicContent(msg *types.OpenAIRespMsg) []types.AnthropicContentBlock {
 	var blocks []types.AnthropicContentBlock
 
-	// Extract text content
 	contentText := ""
 	if msg.Content != nil {
 		contentText = *msg.Content
 	}
 
-	// Extract reasoning content (maps to thinking in Anthropic)
 	reasoningText := ""
 	if msg.ReasoningContent != nil {
 		reasoningText = *msg.ReasoningContent
@@ -548,7 +498,6 @@ func convertOpenAIMsgToAnthropicContent(msg *types.OpenAIRespMsg) []types.Anthro
 		reasoningText = *msg.Reasoning
 	}
 
-	// Add thinking block if reasoning content exists
 	if reasoningText != "" {
 		blocks = append(blocks, types.AnthropicContentBlock{
 			Type: "thinking",
@@ -556,7 +505,6 @@ func convertOpenAIMsgToAnthropicContent(msg *types.OpenAIRespMsg) []types.Anthro
 		})
 	}
 
-	// Add text content block
 	if contentText != "" {
 		blocks = append(blocks, types.AnthropicContentBlock{
 			Type: "text",
@@ -564,7 +512,6 @@ func convertOpenAIMsgToAnthropicContent(msg *types.OpenAIRespMsg) []types.Anthro
 		})
 	}
 
-	// Add tool_use blocks for tool calls
 	for _, tc := range msg.ToolCalls {
 		blocks = append(blocks, types.AnthropicContentBlock{
 			Type:  "tool_use",
@@ -584,7 +531,6 @@ func convertOpenAIMsgToAnthropicContent(msg *types.OpenAIRespMsg) []types.Anthro
 	return blocks
 }
 
-// mapAnthropicStopReason converts OpenAI finish reasons to Anthropic stop reasons.
 func mapAnthropicStopReason(finishReason *string) string {
 	if finishReason == nil {
 		return "end_turn"
@@ -603,20 +549,16 @@ func mapAnthropicStopReason(finishReason *string) string {
 	}
 }
 
-// extractAnthropicSystemText extracts the text from the Anthropic system field,
-// which can be a plain string or an array of content blocks (newer API format).
 func extractAnthropicSystemText(system json.RawMessage) string {
 	if len(system) == 0 || string(system) == "null" {
 		return ""
 	}
 
-	// Try as plain string first
 	var text string
 	if err := json.Unmarshal(system, &text); err == nil {
 		return text
 	}
 
-	// Try as array of content blocks
 	var blocks []types.AnthropicContentBlock
 	if err := json.Unmarshal(system, &blocks); err == nil {
 		var parts []string
@@ -631,7 +573,6 @@ func extractAnthropicSystemText(system json.RawMessage) string {
 	return ""
 }
 
-// writeAnthropicError writes an Anthropic-compatible error response.
 func writeAnthropicError(w http.ResponseWriter, statusCode int, errType, message string) {
 	resp := types.AnthropicErrorResponse{
 		Type: "error",
@@ -646,7 +587,6 @@ func writeAnthropicError(w http.ResponseWriter, statusCode int, errType, message
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
-// writeAnthropicSSE writes an Anthropic-style SSE event (event: + data:).
 func writeAnthropicSSE(w http.ResponseWriter, eventType string, data any) {
 	jsonData, err := json.Marshal(data)
 	if err != nil {

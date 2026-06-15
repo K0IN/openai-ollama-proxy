@@ -2,8 +2,6 @@ package types
 
 import "encoding/json"
 
-// Ollama types.
-
 type OllamaChatRequest struct {
 	Model     string          `json:"model"`
 	Messages  []OllamaMessage `json:"messages"`
@@ -181,8 +179,6 @@ type OllamaPsModel struct {
 	ExpiresAt string             `json:"expires_at"`
 	SizeVRAM  int64              `json:"size_vram"`
 }
-
-// OpenAI types.
 
 type OpenAIChatRequest struct {
 	Model              string                `json:"model"`

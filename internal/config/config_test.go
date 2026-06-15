@@ -80,7 +80,7 @@ func TestLoad_DefaultValues(t *testing.T) {
 	t.Setenv("UPSTREAM_RETRY_INTERVAL", "")
 	t.Setenv("DEBUG", "")
 
-	cfg := Load()
+	cfg := LoadFromEnv()
 	if cfg.ListenAddr != ":11434" {
 		t.Errorf("ListenAddr = %q, want %q", cfg.ListenAddr, ":11434")
 	}

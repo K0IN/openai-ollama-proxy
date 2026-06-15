@@ -16,8 +16,8 @@ import (
 )
 
 func main() {
-	cfg := config.Load()
-	server := handlers.NewWithClients(cfg, config.NewHTTPClient(cfg), config.NewRequestHTTPClient(cfg))
+	cfg, router := config.Load()
+	server := handlers.NewWithClients(cfg, router, config.NewHTTPClient(cfg), config.NewRequestHTTPClient(cfg))
 
 	log.Printf("openai-ollama-proxy listening on %s", cfg.ListenAddr)
 	log.Printf("  upstream URL:        %s", cfg.UpstreamBaseURL)

@@ -57,7 +57,10 @@ func (server *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "translation error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	openAIReq.Model = server.cfg.UpstreamModel
+
+	// Resolve route for the requested model.
+	baseURL, apiKey, upstreamModel, _ := server.resolveRouteForModel(ollamaReq.Model)
+	openAIReq.Model = upstreamModel
 
 	openAIBody, err := json.Marshal(openAIReq)
 	if err != nil {
@@ -67,7 +70,7 @@ func (server *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 
 	timings := newObservedTimings()
 
-	resp, err := server.doUpstreamChatWithRetry(r.Context(), openAIBody)
+	resp, err := server.doUpstreamChatWithRetryForRoute(r.Context(), openAIBody, baseURL, apiKey)
 	if err != nil {
 		http.Error(w, "upstream not ready: "+err.Error(), http.StatusServiceUnavailable)
 		return
@@ -103,7 +106,6 @@ func (server *Server) handleGenerateNonStream(w http.ResponseWriter, body io.Rea
 	}
 	timings.markComplete()
 
-	// Record token stats
 	if openAIResp.Usage != nil {
 		server.stats.Record(model, openAIResp.Usage.PromptTokens, openAIResp.Usage.CompletionTokens, time.Duration(timings.evalDuration()))
 	}
@@ -166,7 +168,7 @@ func (server *Server) handleGenerateStream(w http.ResponseWriter, body io.Reader
 			timings.markComplete()
 			applyObservedGenerateTimings(&ollamaChunk, timings)
 			sentFinal = true
-			// Record token stats from final chunk
+
 			server.stats.Record(model, ollamaChunk.PromptEvalCount, ollamaChunk.EvalCount, time.Duration(timings.evalDuration()))
 		}
 
@@ -228,7 +230,17 @@ func (server *Server) handleEmbed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	openAIReq := types.OpenAIEmbedRequest{Model: server.cfg.UpstreamModel, Input: ollamaReq.Input}
+	baseURL, apiKey, upstreamModel, _ := server.resolveRouteForModel(ollamaReq.Model)
+	if baseURL == "" {
+		// Fallback to first upstream if no model match.
+		upstreams := server.router.AllUpstreams()
+		if len(upstreams) > 0 {
+			baseURL = upstreams[0].URL
+			apiKey = upstreams[0].APIKey
+		}
+	}
+
+	openAIReq := types.OpenAIEmbedRequest{Model: upstreamModel, Input: ollamaReq.Input}
 	if len(ollamaReq.Input) == 0 && ollamaReq.Prompt != "" {
 		input, _ := json.Marshal(ollamaReq.Prompt)
 		openAIReq.Input = input
@@ -240,14 +252,14 @@ func (server *Server) handleEmbed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	upstream, err := http.NewRequestWithContext(r.Context(), http.MethodPost, server.cfg.UpstreamBaseURL+"/v1/embeddings", bytes.NewReader(openAIBody))
+	upstream, err := http.NewRequestWithContext(r.Context(), http.MethodPost, baseURL+"/v1/embeddings", bytes.NewReader(openAIBody))
 	if err != nil {
 		http.Error(w, "request error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	upstream.Header.Set("Content-Type", "application/json")
-	if server.cfg.UpstreamAPIKey != "" {
-		upstream.Header.Set("Authorization", "Bearer "+server.cfg.UpstreamAPIKey)
+	if apiKey != "" {
+		upstream.Header.Set("Authorization", "Bearer "+apiKey)
 	}
 	timings := newObservedTimings()
 
@@ -303,21 +315,30 @@ func (server *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 		input, _ = json.Marshal(ollamaReq.Prompt)
 	}
 
-	openAIReq := types.OpenAIEmbedRequest{Model: server.cfg.UpstreamModel, Input: input}
+	baseURL, apiKey, upstreamModel, _ := server.resolveRouteForModel(ollamaReq.Model)
+	if baseURL == "" {
+		upstreams := server.router.AllUpstreams()
+		if len(upstreams) > 0 {
+			baseURL = upstreams[0].URL
+			apiKey = upstreams[0].APIKey
+		}
+	}
+
+	openAIReq := types.OpenAIEmbedRequest{Model: upstreamModel, Input: input}
 	openAIBody, err := json.Marshal(openAIReq)
 	if err != nil {
 		http.Error(w, "marshal error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	upstream, err := http.NewRequestWithContext(r.Context(), http.MethodPost, server.cfg.UpstreamBaseURL+"/v1/embeddings", bytes.NewReader(openAIBody))
+	upstream, err := http.NewRequestWithContext(r.Context(), http.MethodPost, baseURL+"/v1/embeddings", bytes.NewReader(openAIBody))
 	if err != nil {
 		http.Error(w, "request error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	upstream.Header.Set("Content-Type", "application/json")
-	if server.cfg.UpstreamAPIKey != "" {
-		upstream.Header.Set("Authorization", "Bearer "+server.cfg.UpstreamAPIKey)
+	if apiKey != "" {
+		upstream.Header.Set("Authorization", "Bearer "+apiKey)
 	}
 
 	resp, err := server.requestClient.Do(upstream)

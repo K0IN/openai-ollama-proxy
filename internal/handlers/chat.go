@@ -57,7 +57,10 @@ func (server *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "translation error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	openAIReq.Model = server.cfg.UpstreamModel
+
+	// Resolve route for the requested model.
+	baseURL, apiKey, upstreamModel, _ := server.resolveRouteForModel(ollamaReq.Model)
+	openAIReq.Model = upstreamModel
 
 	openAIBody, err := json.Marshal(openAIReq)
 	if err != nil {
@@ -66,12 +69,12 @@ func (server *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if server.cfg.Debug {
-		log.Printf(">>> UPSTREAM POST %s/v1/chat/completions (%d bytes):\n  %s", server.cfg.UpstreamBaseURL, len(openAIBody), string(applogging.RedactJSONForLog(openAIBody)))
+		log.Printf(">>> UPSTREAM POST %s/v1/chat/completions (%d bytes, model=%q):\n  %s", baseURL, len(openAIBody), upstreamModel, string(applogging.RedactJSONForLog(openAIBody)))
 	}
 
 	timings := newObservedTimings()
 
-	resp, err := server.doUpstreamChatWithRetry(r.Context(), openAIBody)
+	resp, err := server.doUpstreamChatWithRetryForRoute(r.Context(), openAIBody, baseURL, apiKey)
 	if err != nil {
 		log.Printf("upstream chat error: %v", err)
 		http.Error(w, "upstream not ready: "+err.Error(), http.StatusServiceUnavailable)
@@ -121,7 +124,6 @@ func (server *Server) handleChatNonStream(w http.ResponseWriter, body io.Reader,
 	}
 	timings.markComplete()
 
-	// Record token stats
 	if openAIResp.Usage != nil {
 		server.stats.Record(model, openAIResp.Usage.PromptTokens, openAIResp.Usage.CompletionTokens, time.Duration(timings.evalDuration()))
 	}
@@ -248,7 +250,7 @@ func (server *Server) handleChatStream(w http.ResponseWriter, body io.Reader, mo
 		if ollamaChunk.Done {
 			timings.markComplete()
 			applyObservedChatTimings(&ollamaChunk, timings)
-			// Record token stats from the final chunk
+
 			server.stats.Record(model, ollamaChunk.PromptEvalCount, ollamaChunk.EvalCount, time.Duration(timings.evalDuration()))
 			sentFinal = true
 		}

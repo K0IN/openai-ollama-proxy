@@ -12,7 +12,10 @@ func (server *Server) rewriteRequestModel(body []byte) ([]byte, error) {
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return nil, err
 	}
-	payload["model"] = server.cfg.UpstreamModel
+	// Resolve route based on the requested model.
+	model, _ := payload["model"].(string)
+	_, _, upstreamModel, _ := server.resolveRouteForModel(model)
+	payload["model"] = upstreamModel
 	return json.Marshal(payload)
 }
 
@@ -21,7 +24,10 @@ func (server *Server) rewriteRequestForChat(body []byte) ([]byte, bool, error) {
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return nil, false, err
 	}
-	payload["model"] = server.cfg.UpstreamModel
+	// Resolve route based on the requested model.
+	model, _ := payload["model"].(string)
+	_, _, upstreamModel, _ := server.resolveRouteForModel(model)
+	payload["model"] = upstreamModel
 
 	normalized, err := json.Marshal(payload)
 	if err != nil {

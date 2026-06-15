@@ -2,7 +2,7 @@
 ### Requires VS Code REST Client extension
 ### Adjust @host if running on a different address
 
-@host = http://localhost:11434
+@host = http://host.docker.internal:11434
 
 ### Health check (HEAD)
 HEAD {{host}}/ HTTP/1.1
@@ -218,6 +218,11 @@ anthropic-version: 2023-06-01
     {"role": "user", "content": "Count from 1 to 5."}
   ]
 }
+
+###
+
+### Stats
+GET {{host}}/stats HTTP/1.1
 
 ###
 

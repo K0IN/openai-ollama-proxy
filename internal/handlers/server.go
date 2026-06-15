@@ -20,10 +20,9 @@ import (
 )
 
 type Server struct {
-	cfg    config.Config
-	client *http.Client
-	// requestClient is used for short upstream calls (embeddings, models list,
-	// health probes). client is used for streaming chat/generate completions.
+	cfg           config.Config
+	router        *config.RoutingTable
+	client        *http.Client
 	requestClient *http.Client
 	stats         *stats.Stats
 }
@@ -43,19 +42,19 @@ var modelSizePattern = regexp.MustCompile(`(?i)(?:^|[^0-9a-z])(\d+(?:\.\d+)?)\s*
 // New constructs a Server that uses a single HTTP client for both streaming
 // and short upstream calls. Prefer NewWithClients in production so that
 // streaming completions cannot starve embeddings / health calls.
-func New(cfg config.Config, client *http.Client) *Server {
+func New(cfg config.Config, router *config.RoutingTable, client *http.Client) *Server {
 	if client == nil {
 		client = config.NewHTTPClient(cfg)
 	}
 
-	return &Server{cfg: cfg, client: client, requestClient: client, stats: stats.New()}
+	return &Server{cfg: cfg, router: router, client: client, requestClient: client, stats: stats.New()}
 }
 
 // NewWithClients constructs a Server backed by separate HTTP clients for
 // streaming completions (streamClient) and short upstream calls
 // (requestClient). Either argument may be nil to fall back to the package
 // defaults.
-func NewWithClients(cfg config.Config, streamClient, requestClient *http.Client) *Server {
+func NewWithClients(cfg config.Config, router *config.RoutingTable, streamClient, requestClient *http.Client) *Server {
 	if streamClient == nil {
 		streamClient = config.NewHTTPClient(cfg)
 	}
@@ -63,7 +62,7 @@ func NewWithClients(cfg config.Config, streamClient, requestClient *http.Client)
 		requestClient = config.NewRequestHTTPClient(cfg)
 	}
 
-	return &Server{cfg: cfg, client: streamClient, requestClient: requestClient, stats: stats.New()}
+	return &Server{cfg: cfg, router: router, client: streamClient, requestClient: requestClient, stats: stats.New()}
 }
 
 func (server *Server) Routes() http.Handler {
@@ -91,7 +90,6 @@ func (server *Server) Routes() http.Handler {
 	mux.HandleFunc("/chat/completions", server.handleOpenAIChat)
 	mux.HandleFunc("/v1/chat/completions", server.handleOpenAIChat)
 
-	// Anthropic Messages API routes
 	mux.HandleFunc("/messages", server.handleAnthropicMessages)
 	mux.HandleFunc("/v1/messages", server.handleAnthropicMessages)
 
@@ -108,10 +106,30 @@ func (server *Server) Routes() http.Handler {
 	return mux
 }
 
+// resolveRouteForModel maps a user-facing model name to the upstream
+// connection details.  For multi-upstream ([[upstream]]) configs it
+// consults the RoutingTable; for legacy flat config it falls back to
+// cfg.UpstreamBaseURL / UpstreamModel / UpstreamAPIKey.
+func (server *Server) resolveRouteForModel(model string) (baseURL, apiKey, upstreamModel string, ctxLen int) {
+	// Prefer the routing table when available.
+	if server.router != nil {
+		if entry, ok := server.router.Lookup(model); ok {
+			return entry.URL, entry.APIKey, entry.UpstreamModel, entry.ContextLength
+		}
+	}
+	// Fallback to the flat config.
+	return server.cfg.UpstreamBaseURL, server.cfg.UpstreamAPIKey, server.cfg.UpstreamModel, server.cfg.ModelContextLength
+}
+
 func (server *Server) currentModelMetadata(ctx context.Context) modelMetadata {
 	metadata := server.fallbackModelMetadata()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.cfg.UpstreamBaseURL+"/v1/models", nil)
+	baseURL := server.cfg.UpstreamBaseURL
+	if baseURL == "" {
+		return metadata
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/v1/models", nil)
 	if err != nil {
 		return metadata
 	}
@@ -169,7 +187,6 @@ func (server *Server) fallbackModelMetadata() modelMetadata {
 func applyModelNameHints(metadata *modelMetadata, name string) {
 	lower := strings.ToLower(name)
 
-	// Family detection ordered by specificity (longest/most specific first).
 	switch {
 	case strings.Contains(lower, "qwen3"):
 		metadata.Family = "qwen3"
@@ -205,7 +222,6 @@ func applyModelNameHints(metadata *modelMetadata, name string) {
 		metadata.Family = "granite"
 	}
 
-	// Quantization hints.
 	switch {
 	case strings.Contains(lower, "awq"):
 		metadata.Quantization = "AWQ-4bit"
@@ -240,7 +256,6 @@ func applyModelNameHints(metadata *modelMetadata, name string) {
 		metadata.ParameterCount = count
 	}
 
-	// Format hints.
 	switch {
 	case strings.Contains(lower, "gguf"):
 		metadata.Format = "gguf"
@@ -294,10 +309,17 @@ func ollamaModelInfo(metadata modelMetadata) map[string]any {
 }
 
 func (server *Server) probeUpstreamHealth(ctx context.Context) (bool, error) {
+	baseURL := strings.TrimRight(server.cfg.UpstreamBaseURL, "/")
+	// No upstream configured — the proxy is self-sufficient (provides
+	// synthetic /api/tags, /api/version, etc.) and is always healthy.
+	if baseURL == "" {
+		return true, nil
+	}
+
 	healthCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	upstream, err := http.NewRequestWithContext(healthCtx, http.MethodGet, strings.TrimRight(server.cfg.UpstreamBaseURL, "/")+"/v1/models", nil)
+	upstream, err := http.NewRequestWithContext(healthCtx, http.MethodGet, baseURL+"/v1/models", nil)
 	if err != nil {
 		return false, err
 	}
@@ -316,6 +338,10 @@ func (server *Server) probeUpstreamHealth(ctx context.Context) (bool, error) {
 }
 
 func (server *Server) doUpstreamChatWithRetry(ctx context.Context, payload []byte) (*http.Response, error) {
+	return server.doUpstreamChatWithRetryForRoute(ctx, payload, server.cfg.UpstreamBaseURL, server.cfg.UpstreamAPIKey)
+}
+
+func (server *Server) doUpstreamChatWithRetryForRoute(ctx context.Context, payload []byte, baseURL, apiKey string) (*http.Response, error) {
 	deadline := time.Now().Add(server.cfg.UpstreamStartupWait)
 	if server.cfg.UpstreamRetryInterval <= 0 {
 		server.cfg.UpstreamRetryInterval = 2 * time.Second
@@ -324,13 +350,13 @@ func (server *Server) doUpstreamChatWithRetry(ctx context.Context, payload []byt
 	var lastErr error
 
 	for {
-		upstream, err := http.NewRequestWithContext(ctx, http.MethodPost, server.cfg.UpstreamBaseURL+"/v1/chat/completions", bytes.NewReader(payload))
+		upstream, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/v1/chat/completions", bytes.NewReader(payload))
 		if err != nil {
 			return nil, err
 		}
 		upstream.Header.Set("Content-Type", "application/json")
-		if server.cfg.UpstreamAPIKey != "" {
-			upstream.Header.Set("Authorization", "Bearer "+server.cfg.UpstreamAPIKey)
+		if apiKey != "" {
+			upstream.Header.Set("Authorization", "Bearer "+apiKey)
 		}
 
 		resp, err := server.client.Do(upstream)
@@ -372,10 +398,6 @@ func copyResponseHeaders(dst http.ResponseWriter, src *http.Response) {
 	}
 }
 
-// isZeroKeepAlive reports whether the Ollama keep_alive value explicitly
-// requests an immediate unload. The value can be a JSON number (seconds),
-// or a JSON string in either bare-integer ("0") or duration ("5m") form.
-// Returns false for missing / unparseable values to avoid spurious unloads.
 func isZeroKeepAlive(raw json.RawMessage) bool {
 	trimmed := strings.TrimSpace(string(raw))
 	if trimmed == "" || trimmed == "null" {

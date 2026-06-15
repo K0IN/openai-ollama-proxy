@@ -14,30 +14,54 @@ import (
 )
 
 type Config struct {
-	ListenAddr            string
-	UpstreamBaseURL       string
-	UpstreamAPIKey        string
-	UpstreamModel         string
-	ModelName             string
-	ModelContextLength    int
-	OllamaVersion         string
-	UpstreamStartupWait   time.Duration
-	UpstreamRetryInterval time.Duration
-	MaxRequestBytes       int64
-	ShutdownTimeout       time.Duration
-	// HTTPRequestTimeout caps short upstream calls (embeddings, models list,
-	// health probe). Streaming completions use HTTPStreamTimeout instead.
-	HTTPRequestTimeout time.Duration
-	// HTTPStreamTimeout caps streaming chat/generate completions end-to-end.
-	HTTPStreamTimeout time.Duration
-	Debug             bool
+	ListenAddr            string           `toml:"listen_addr"`
+	UpstreamBaseURL       string           `toml:"upstream_base_url"`
+	UpstreamAPIKey        string           `toml:"upstream_api_key"`
+	UpstreamModel         string           `toml:"upstream_model"`
+	ModelName             string           `toml:"model_name"`
+	ModelContextLength    int              `toml:"model_context_length"`
+	OllamaVersion         string           `toml:"ollama_version"`
+	UpstreamStartupWait   time.Duration    `toml:"upstream_startup_wait"`
+	UpstreamRetryInterval time.Duration    `toml:"upstream_retry_interval"`
+	MaxRequestBytes       int64            `toml:"max_request_bytes"`
+	ShutdownTimeout       time.Duration    `toml:"shutdown_timeout"`
+	HTTPRequestTimeout    time.Duration    `toml:"http_request_timeout"`
+	HTTPStreamTimeout     time.Duration    `toml:"http_stream_timeout"`
+	Debug                 bool             `toml:"debug"`
+	Upstreams             []UpstreamConfig `toml:"upstream"`
 }
 
-// Load reads configuration from the environment, applying defaults for any
-// unset variables, and validates the result. It logs and exits on validation
-// failure so misconfiguration is surfaced at startup rather than at request
-// time.
-func Load() Config {
+func (c *Config) applyDefaults() {
+	if c.ListenAddr == "" {
+		c.ListenAddr = ":11434"
+	}
+	if c.ModelContextLength <= 0 {
+		c.ModelContextLength = 65536
+	}
+	if c.OllamaVersion == "" {
+		c.OllamaVersion = "0.6.4"
+	}
+	if c.UpstreamStartupWait <= 0 {
+		c.UpstreamStartupWait = 30 * time.Minute
+	}
+	if c.UpstreamRetryInterval <= 0 {
+		c.UpstreamRetryInterval = 2 * time.Second
+	}
+	if c.MaxRequestBytes <= 0 {
+		c.MaxRequestBytes = 32 << 20 // 32 MiB
+	}
+	if c.ShutdownTimeout <= 0 {
+		c.ShutdownTimeout = 30 * time.Second
+	}
+	if c.HTTPRequestTimeout <= 0 {
+		c.HTTPRequestTimeout = 30 * time.Second
+	}
+	if c.HTTPStreamTimeout <= 0 {
+		c.HTTPStreamTimeout = 5 * time.Minute
+	}
+}
+
+func LoadFromEnv() Config {
 	cfg := Config{
 		ListenAddr:            envOr("LISTEN_ADDR", ":11434"),
 		UpstreamBaseURL:       envOr("UPSTREAM_BASE_URL", "http://localhost:8000"),
@@ -62,9 +86,6 @@ func Load() Config {
 	return cfg
 }
 
-// Validate verifies that the configuration is internally consistent and that
-// network-facing fields can actually be used. Returns an aggregated error so
-// every problem is reported at once.
 func (c Config) Validate() error {
 	var errs []string
 
@@ -75,7 +96,10 @@ func (c Config) Validate() error {
 	}
 
 	if strings.TrimSpace(c.UpstreamBaseURL) == "" {
-		errs = append(errs, "UPSTREAM_BASE_URL must not be empty")
+		// Allow empty UPSTREAM_BASE_URL when using TOML upstream-based config
+		if len(c.Upstreams) == 0 {
+			errs = append(errs, "UPSTREAM_BASE_URL must not be empty")
+		}
 	} else {
 		parsed, err := url.Parse(c.UpstreamBaseURL)
 		switch {
@@ -89,11 +113,17 @@ func (c Config) Validate() error {
 	}
 
 	if strings.TrimSpace(c.UpstreamModel) == "" {
-		errs = append(errs, "UPSTREAM_MODEL must not be empty")
+		// Allow empty UPSTREAM_MODEL when using TOML upstream-based config
+		if len(c.Upstreams) == 0 {
+			errs = append(errs, "UPSTREAM_MODEL must not be empty")
+		}
 	}
 
 	if strings.TrimSpace(c.ModelName) == "" {
-		errs = append(errs, "MODEL_NAME must not be empty")
+		// Allow empty MODEL_NAME when using TOML upstream-based config
+		if len(c.Upstreams) == 0 {
+			errs = append(errs, "MODEL_NAME must not be empty")
+		}
 	}
 
 	if c.ModelContextLength <= 0 {
@@ -126,9 +156,6 @@ func (c Config) Validate() error {
 	return nil
 }
 
-// NewHTTPClient returns the HTTP client used for streaming chat/generate
-// requests. Its timeout caps a single end-to-end completion (request + body
-// streaming).
 func NewHTTPClient(cfg Config) *http.Client {
 	timeout := cfg.HTTPStreamTimeout
 	if timeout <= 0 {
@@ -137,8 +164,6 @@ func NewHTTPClient(cfg Config) *http.Client {
 	return &http.Client{Timeout: timeout}
 }
 
-// NewRequestHTTPClient returns the HTTP client used for short upstream calls
-// (embeddings, models list, health probes).
 func NewRequestHTTPClient(cfg Config) *http.Client {
 	timeout := cfg.HTTPRequestTimeout
 	if timeout <= 0 {

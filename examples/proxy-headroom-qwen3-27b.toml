@@ -1,0 +1,23 @@
+# Proxy configuration for vLLM + Headroom + Qwen3.6 27B
+# Used with: examples/docker-compose-headroom-qwen3-27b.yml
+
+listen_addr = ":11434"
+ollama_version = "0.6.4"
+model_context_length = 65536
+
+upstream_startup_wait = "30m"
+upstream_retry_interval = "2s"
+
+http_request_timeout = "30s"
+http_stream_timeout = "5m"
+shutdown_timeout = "30s"
+max_request_bytes = 33554432
+
+[[upstream]]
+url = "http://headroom:8787"
+api_key = "change-me"
+
+[[upstream.models]]
+upstream = "qwen3:latest"
+local = "qwen3:latest"
+context_length = 65536

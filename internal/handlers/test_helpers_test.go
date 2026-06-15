@@ -13,7 +13,7 @@ import (
 )
 
 func newTestServer() *Server {
-	return New(config.Config{
+	cfg := config.Config{
 		ListenAddr:            ":11434",
 		UpstreamBaseURL:       "http://127.0.0.1:0",
 		UpstreamAPIKey:        "",
@@ -23,7 +23,13 @@ func newTestServer() *Server {
 		OllamaVersion:         "0.6.4",
 		UpstreamStartupWait:   2 * time.Second,
 		UpstreamRetryInterval: 10 * time.Millisecond,
-	}, &http.Client{Timeout: 5 * time.Second})
+	}
+	router, err := config.BuildRoutingTable(nil, cfg.ModelContextLength)
+	if err != nil {
+		// Legacy flat-config tests: create an empty routing table.
+		router = &config.RoutingTable{}
+	}
+	return New(cfg, router, &http.Client{Timeout: 5 * time.Second})
 }
 
 func withUpstreamHealthServer(t *testing.T, server *Server, statusCode int, body string) func() {
