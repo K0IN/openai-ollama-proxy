@@ -223,9 +223,9 @@ type OpenAIMessage struct {
 }
 
 type OpenAIContentPart struct {
-	Type      string           `json:"type"`
-	Text      string           `json:"text,omitempty"`
-	ImageURL  *OpenAIImageURL  `json:"image_url,omitempty"`
+	Type       string          `json:"type"`
+	Text       string          `json:"text,omitempty"`
+	ImageURL   *OpenAIImageURL `json:"image_url,omitempty"`
 	InputAudio *OpenAIAudioURL `json:"input_audio,omitempty"`
 }
 

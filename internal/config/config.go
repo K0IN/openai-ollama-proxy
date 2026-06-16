@@ -61,6 +61,7 @@ func (c *Config) applyDefaults() {
 
 // LoadFromEnv is a no-op stub kept for backward compatibility.
 // All configuration should be done via TOML files (see config.toml).
+//
 // Deprecated: will be removed in a future release.
 func LoadFromEnv() Config {
 	return Config{}
@@ -133,6 +134,4 @@ func envOrInt(key string, fallback int) int {
 	return fallback
 }
 
-func envOrInt64(key string, fallback int64) int64 {
-	return fallback
-}
+

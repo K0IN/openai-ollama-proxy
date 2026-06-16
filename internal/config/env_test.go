@@ -7,12 +7,12 @@ import (
 
 func TestExpandEnvVars(t *testing.T) {
 	// Set up test environment variables
-	os.Setenv("TEST_VAR", "test_value")
-	os.Setenv("TEST_EMPTY", "")
+	_ = os.Setenv("TEST_VAR", "test_value")
+	_ = os.Setenv("TEST_EMPTY", "")
 	defer func() {
-		os.Unsetenv("TEST_VAR")
-		os.Unsetenv("TEST_EMPTY")
-		os.Unsetenv("TEST_MISSING")
+		_ = os.Unsetenv("TEST_VAR")
+		_ = os.Unsetenv("TEST_EMPTY")
+		_ = os.Unsetenv("TEST_MISSING")
 	}()
 
 	tests := []struct {
