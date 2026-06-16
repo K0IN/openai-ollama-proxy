@@ -261,6 +261,38 @@ The proxy:
 - Passes `input_audio` parts through unchanged to upstream
 - Preserves multi-modal content arrays through the response normalization pipeline
 
+## Testing
+
+The project has two test suites:
+
+### Unit tests
+
+Fast, lightweight tests that verify translation logic, edge cases, and handler behaviour. No external dependencies required.
+
+```bash
+go test -v -race -count=1 ./...
+```
+
+### Conformance tests (`tests/conformance/`)
+
+Integration tests that drive the proxy with the **official Go SDKs** of all three supported providers (OpenAI, Anthropic, Ollama). They verify that client requests are correctly translated and forwarded to the upstream by capturing the actual HTTP payload the proxy sends.
+
+Because the SDKs live in a separate Go module, the core proxy module stays dependency-free.
+
+```bash
+cd tests/conformance && go test -v -count=1 ./...
+```
+
+**Prerequisite:** the first run downloads ~16 MiB of SDK dependencies (`go mod download`). After that, tests run offline.
+
+**Coverage:**
+
+| SDK | Tests | What's verified |
+|---|---|---|
+| OpenAI | 6 | Sampling params, function tools, vision (image_url), streaming content, embeddings, model list |
+| Anthropic | 5 | System prompt + params, tool schema translation (`input_schema` → OpenAI `function`), image blocks, tool_result round-trip, stream accumulation |
+| Ollama | 5 | Options → OpenAI sampling params, images → multimodal, tools → OpenAI schema, streaming, model list |
+
 ## Missing features
 
 * Other upstream APIs (files, etc)
