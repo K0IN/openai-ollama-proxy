@@ -29,6 +29,12 @@ func (recorder *statusRecorder) Flush() {
 
 func Middleware(debug bool, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Never log /stats requests.
+		if r.URL.Path == "/stats" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		start := time.Now()
 		recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 
