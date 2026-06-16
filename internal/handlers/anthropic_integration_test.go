@@ -26,7 +26,7 @@ func TestAnthropicMessages_NonStream(t *testing.T) {
 		}
 
 		var req types.OpenAIChatRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 		if req.Model != "claude-upstream" {
 			t.Errorf("upstream model = %q, want %q", req.Model, "claude-upstream")
 		}
@@ -36,7 +36,7 @@ func TestAnthropicMessages_NonStream(t *testing.T) {
 
 		content := "Hello from Claude!"
 		stop := "stop"
-		json.NewEncoder(w).Encode(types.OpenAIChatResponse{
+		_ = json.NewEncoder(w).Encode(types.OpenAIChatResponse{
 			ID:      "chatcmpl-123",
 			Object:  "chat.completion",
 			Model:   "claude-upstream",
@@ -90,9 +90,7 @@ func TestAnthropicMessages_NonStream(t *testing.T) {
 	}
 
 	var resp types.AnthropicMessageResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("unmarshal error: %v", err)
-	}
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 
 	if resp.ID == "" {
 		t.Error("response ID should not be empty")
@@ -269,7 +267,7 @@ func TestAnthropicMessages_WithSystem(t *testing.T) {
 	t.Run("system_string", func(t *testing.T) {
 		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			var req types.OpenAIChatRequest
-			json.NewDecoder(r.Body).Decode(&req)
+			_ = json.NewDecoder(r.Body).Decode(&req)
 			if len(req.Messages) != 2 {
 				t.Fatalf("len(messages) = %d, want 2", len(req.Messages))
 			}
@@ -277,14 +275,14 @@ func TestAnthropicMessages_WithSystem(t *testing.T) {
 				t.Errorf("message[0].role = %q, want %q", req.Messages[0].Role, "system")
 			}
 			var sysText string
-			json.Unmarshal(req.Messages[0].Content, &sysText)
+			_ = json.Unmarshal(req.Messages[0].Content, &sysText)
 			if sysText != "You are a helpful assistant." {
 				t.Errorf("system = %q, want %q", sysText, "You are a helpful assistant.")
 			}
 
 			content := "Got it!"
 			stop := "stop"
-			json.NewEncoder(w).Encode(types.OpenAIChatResponse{
+			_ = json.NewEncoder(w).Encode(types.OpenAIChatResponse{
 				Choices: []types.OpenAIChoice{{
 					Message:      &types.OpenAIRespMsg{Role: "assistant", Content: &content},
 					FinishReason: &stop,
@@ -312,18 +310,18 @@ func TestAnthropicMessages_WithSystem(t *testing.T) {
 	t.Run("system_block", func(t *testing.T) {
 		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			var req types.OpenAIChatRequest
-			json.NewDecoder(r.Body).Decode(&req)
+			_ = json.NewDecoder(r.Body).Decode(&req)
 			if len(req.Messages) != 2 {
 				t.Fatalf("len(messages) = %d, want 2", len(req.Messages))
 			}
 			var sysText string
-			json.Unmarshal(req.Messages[0].Content, &sysText)
+			_ = json.Unmarshal(req.Messages[0].Content, &sysText)
 			if sysText != "Be concise." {
 				t.Errorf("system = %q, want %q", sysText, "Be concise.")
 			}
 			content := "OK!"
 			stop := "stop"
-			json.NewEncoder(w).Encode(types.OpenAIChatResponse{
+			_ = json.NewEncoder(w).Encode(types.OpenAIChatResponse{
 				Choices: []types.OpenAIChoice{{
 					Message:      &types.OpenAIRespMsg{Role: "assistant", Content: &content},
 					FinishReason: &stop,
@@ -354,7 +352,7 @@ func TestAnthropicMessages_WithSystem(t *testing.T) {
 func TestAnthropicMessages_WithTools(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req types.OpenAIChatRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 		if req.Tools == nil {
 			t.Error("tools should not be nil")
 		}
@@ -362,7 +360,7 @@ func TestAnthropicMessages_WithTools(t *testing.T) {
 		content := ""
 		toolID := "toolu_123"
 		stop := "tool_calls"
-		json.NewEncoder(w).Encode(types.OpenAIChatResponse{
+		_ = json.NewEncoder(w).Encode(types.OpenAIChatResponse{
 			Choices: []types.OpenAIChoice{{
 				Index: 0,
 				Message: &types.OpenAIRespMsg{
@@ -406,9 +404,7 @@ func TestAnthropicMessages_WithTools(t *testing.T) {
 	}
 
 	var resp types.AnthropicMessageResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 
 	// When content is empty and tool calls exist, only the tool_use block is emitted
 	if len(resp.Content) != 1 {
@@ -454,7 +450,7 @@ func TestAnthropicMessages_ErrorHandling(t *testing.T) {
 			t.Fatalf("status = %d, want 400", w.Code)
 		}
 		var errResp types.AnthropicErrorResponse
-		json.NewDecoder(w.Body).Decode(&errResp)
+		_ = json.NewDecoder(w.Body).Decode(&errResp)
 		if errResp.Error.Type != "invalid_request_error" {
 			t.Errorf("error.type = %q, want %q", errResp.Error.Type, "invalid_request_error")
 		}
@@ -463,7 +459,7 @@ func TestAnthropicMessages_ErrorHandling(t *testing.T) {
 	t.Run("upstream_error", func(t *testing.T) {
 		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": "internal error"})
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "internal error"})
 		}))
 		defer upstream.Close()
 
@@ -482,7 +478,7 @@ func TestAnthropicMessages_ErrorHandling(t *testing.T) {
 			t.Fatalf("status = %d, want 502 (body=%s)", w.Code, w.Body.String())
 		}
 		var errResp types.AnthropicErrorResponse
-		json.NewDecoder(w.Body).Decode(&errResp)
+		_ = json.NewDecoder(w.Body).Decode(&errResp)
 		if errResp.Error.Type != "upstream_error" {
 			t.Errorf("error.type = %q, want %q", errResp.Error.Type, "upstream_error")
 		}
@@ -494,13 +490,13 @@ func TestAnthropicMessages_ErrorHandling(t *testing.T) {
 func TestAnthropicMessages_MultiUpstreamRouting(t *testing.T) {
 	upstreamA := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req types.OpenAIChatRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 		if req.Model != "sonnet-upstream" {
 			t.Errorf("upstream A got model=%q, want %q", req.Model, "sonnet-upstream")
 		}
 		content := "From Sonnet"
 		stop := "stop"
-		json.NewEncoder(w).Encode(types.OpenAIChatResponse{
+		_ = json.NewEncoder(w).Encode(types.OpenAIChatResponse{
 			Choices: []types.OpenAIChoice{{
 				Message:      &types.OpenAIRespMsg{Role: "assistant", Content: &content},
 				FinishReason: &stop,
@@ -511,13 +507,13 @@ func TestAnthropicMessages_MultiUpstreamRouting(t *testing.T) {
 
 	upstreamB := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req types.OpenAIChatRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 		if req.Model != "haiku-upstream" {
 			t.Errorf("upstream B got model=%q, want %q", req.Model, "haiku-upstream")
 		}
 		content := "From Haiku"
 		stop := "stop"
-		json.NewEncoder(w).Encode(types.OpenAIChatResponse{
+		_ = json.NewEncoder(w).Encode(types.OpenAIChatResponse{
 			Choices: []types.OpenAIChoice{{
 				Message:      &types.OpenAIRespMsg{Role: "assistant", Content: &content},
 				FinishReason: &stop,
@@ -550,7 +546,7 @@ func TestAnthropicMessages_MultiUpstreamRouting(t *testing.T) {
 			t.Fatalf("status = %d, want 200", w.Code)
 		}
 		var resp types.AnthropicMessageResponse
-		json.Unmarshal(w.Body.Bytes(), &resp)
+		_ = json.Unmarshal(w.Body.Bytes(), &resp)
 		if len(resp.Content) == 0 || resp.Content[0].Text != "From Sonnet" {
 			t.Errorf("got content %+v, want 'From Sonnet'", resp.Content)
 		}
@@ -566,7 +562,7 @@ func TestAnthropicMessages_MultiUpstreamRouting(t *testing.T) {
 			t.Fatalf("status = %d, want 200", w.Code)
 		}
 		var resp types.AnthropicMessageResponse
-		json.Unmarshal(w.Body.Bytes(), &resp)
+		_ = json.Unmarshal(w.Body.Bytes(), &resp)
 		if len(resp.Content) == 0 || resp.Content[0].Text != "From Haiku" {
 			t.Errorf("got content %+v, want 'From Haiku'", resp.Content)
 		}

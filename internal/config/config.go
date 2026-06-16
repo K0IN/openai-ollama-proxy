@@ -133,5 +133,3 @@ func envOrDuration(key string, fallback time.Duration) time.Duration {
 func envOrInt(key string, fallback int) int {
 	return fallback
 }
-
-

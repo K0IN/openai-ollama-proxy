@@ -19,7 +19,7 @@ import (
 func TestOllamaChat_WithOptions(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req types.OpenAIChatRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 
 		if req.Temperature == nil || *req.Temperature != 0.7 {
 			t.Errorf("temperature = %v, want 0.7", req.Temperature)
@@ -39,7 +39,7 @@ func TestOllamaChat_WithOptions(t *testing.T) {
 
 		content := "Response with options"
 		stop := "stop"
-		json.NewEncoder(w).Encode(types.OpenAIChatResponse{
+		_ = json.NewEncoder(w).Encode(types.OpenAIChatResponse{
 			Choices: []types.OpenAIChoice{{
 				Message:      &types.OpenAIRespMsg{Role: "assistant", Content: &content},
 				FinishReason: &stop,
@@ -65,7 +65,7 @@ func TestOllamaChat_WithOptions(t *testing.T) {
 	}
 
 	var resp types.OllamaChatResponse
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	if resp.Message.Content == "" {
 		t.Errorf("content = %q, want non-empty (body=%s)", resp.Message.Content, w.Body.String())
 	}
@@ -82,7 +82,7 @@ func TestOllamaChat_WithOptions(t *testing.T) {
 func TestOllamaChat_WithSystem(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req types.OpenAIChatRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 
 		if len(req.Messages) != 2 {
 			t.Fatalf("len(messages) = %d, want 2", len(req.Messages))
@@ -91,7 +91,7 @@ func TestOllamaChat_WithSystem(t *testing.T) {
 			t.Errorf("messages[0].role = %q, want %q", req.Messages[0].Role, "system")
 		}
 		var sysText string
-		json.Unmarshal(req.Messages[0].Content, &sysText)
+		_ = json.Unmarshal(req.Messages[0].Content, &sysText)
 		if !strings.Contains(sysText, "helpful assistant") {
 			t.Errorf("system content = %q, want to contain 'helpful assistant'", sysText)
 		}
@@ -101,7 +101,7 @@ func TestOllamaChat_WithSystem(t *testing.T) {
 
 		content := "Understood!"
 		stop := "stop"
-		json.NewEncoder(w).Encode(types.OpenAIChatResponse{
+		_ = json.NewEncoder(w).Encode(types.OpenAIChatResponse{
 			Choices: []types.OpenAIChoice{{
 				Message:      &types.OpenAIRespMsg{Role: "assistant", Content: &content},
 				FinishReason: &stop,
@@ -131,7 +131,7 @@ func TestOllamaChat_WithSystem(t *testing.T) {
 func TestOllamaChat_WithToolMessages(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req types.OpenAIChatRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 
 		// user + assistant(empty+tool_calls) + tool(result) = 3 messages
 		if len(req.Messages) != 3 {
@@ -147,7 +147,7 @@ func TestOllamaChat_WithToolMessages(t *testing.T) {
 
 		content := "The weather is sunny"
 		stop := "stop"
-		json.NewEncoder(w).Encode(types.OpenAIChatResponse{
+		_ = json.NewEncoder(w).Encode(types.OpenAIChatResponse{
 			Choices: []types.OpenAIChoice{{
 				Message:      &types.OpenAIRespMsg{Role: "assistant", Content: &content},
 				FinishReason: &stop,
@@ -172,7 +172,7 @@ func TestOllamaChat_WithToolMessages(t *testing.T) {
 	}
 
 	var resp types.OllamaChatResponse
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	if resp.Message.Content != "The weather is sunny" {
 		t.Errorf("content = %q, want %q", resp.Message.Content, "The weather is sunny")
 	}
@@ -182,7 +182,7 @@ func TestOllamaChat_WithToolMessages(t *testing.T) {
 func TestOllamaChat_WithFormat(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req types.OpenAIChatRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 
 		if req.ResponseFormat == nil || req.ResponseFormat.Type != "json_object" {
 			t.Errorf("response_format = %+v, want json_object", req.ResponseFormat)
@@ -190,7 +190,7 @@ func TestOllamaChat_WithFormat(t *testing.T) {
 
 		content := `{"result":"ok"}`
 		stop := "stop"
-		json.NewEncoder(w).Encode(types.OpenAIChatResponse{
+		_ = json.NewEncoder(w).Encode(types.OpenAIChatResponse{
 			Choices: []types.OpenAIChoice{{
 				Message:      &types.OpenAIRespMsg{Role: "assistant", Content: &content},
 				FinishReason: &stop,
@@ -259,7 +259,7 @@ func TestOllamaChat_StreamWithThinking(t *testing.T) {
 	}
 
 	var first types.OllamaChatResponse
-	json.Unmarshal([]byte(lines[0]), &first)
+	_ = json.Unmarshal([]byte(lines[0]), &first)
 	if first.Model != "qwen3:latest" {
 		t.Errorf("model = %q, want %q", first.Model, "qwen3:latest")
 	}
@@ -271,7 +271,7 @@ func TestOllamaChat_StreamWithThinking(t *testing.T) {
 	}
 
 	var last types.OllamaChatResponse
-	json.Unmarshal([]byte(lines[len(lines)-1]), &last)
+	_ = json.Unmarshal([]byte(lines[len(lines)-1]), &last)
 	if !last.Done {
 		t.Error("last chunk should be done")
 	}
@@ -287,7 +287,7 @@ func TestOllamaChat_StreamWithThinking(t *testing.T) {
 func TestOllamaGenerate_WithSystem(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req types.OpenAIChatRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 
 		if len(req.Messages) != 2 {
 			t.Fatalf("len(messages) = %d, want 2", len(req.Messages))
@@ -296,19 +296,19 @@ func TestOllamaGenerate_WithSystem(t *testing.T) {
 			t.Errorf("messages[0].role = %q, want %q", req.Messages[0].Role, "system")
 		}
 		var sysText string
-		json.Unmarshal(req.Messages[0].Content, &sysText)
+		_ = json.Unmarshal(req.Messages[0].Content, &sysText)
 		if !strings.Contains(sysText, "expert") {
 			t.Errorf("system = %q, want to contain 'expert'", sysText)
 		}
 		var prompt string
-		json.Unmarshal(req.Messages[1].Content, &prompt)
+		_ = json.Unmarshal(req.Messages[1].Content, &prompt)
 		if prompt != "Hello" {
 			t.Errorf("prompt = %q, want %q", prompt, "Hello")
 		}
 
 		content := "Hello from expert!"
 		stop := "stop"
-		json.NewEncoder(w).Encode(types.OpenAIChatResponse{
+		_ = json.NewEncoder(w).Encode(types.OpenAIChatResponse{
 			Choices: []types.OpenAIChoice{{
 				Message:      &types.OpenAIRespMsg{Role: "assistant", Content: &content},
 				FinishReason: &stop,
@@ -334,7 +334,7 @@ func TestOllamaGenerate_WithSystem(t *testing.T) {
 	}
 
 	var resp types.OllamaGenerateResponse
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	if resp.Response != "Hello from expert!" {
 		t.Errorf("response = %q, want %q", resp.Response, "Hello from expert!")
 	}
@@ -395,7 +395,7 @@ func TestOllamaGenerate_Stream(t *testing.T) {
 	}
 
 	var first types.OllamaGenerateResponse
-	json.Unmarshal([]byte(lines[0]), &first)
+	_ = json.Unmarshal([]byte(lines[0]), &first)
 	if first.Model != "qwen3:latest" {
 		t.Errorf("model = %q, want %q", first.Model, "qwen3:latest")
 	}
@@ -407,7 +407,7 @@ func TestOllamaGenerate_Stream(t *testing.T) {
 	}
 
 	var last types.OllamaGenerateResponse
-	json.Unmarshal([]byte(lines[len(lines)-1]), &last)
+	_ = json.Unmarshal([]byte(lines[len(lines)-1]), &last)
 	if !last.Done {
 		t.Error("last chunk should be done")
 	}
@@ -427,7 +427,7 @@ func TestOllamaGenerate_Stream(t *testing.T) {
 func TestOllamaGenerate_WithImages(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req types.OpenAIChatRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 
 		if len(req.Messages) != 1 {
 			t.Fatalf("len(messages) = %d, want 1", len(req.Messages))
@@ -449,7 +449,7 @@ func TestOllamaGenerate_WithImages(t *testing.T) {
 
 		content := "A beautiful landscape"
 		stop := "stop"
-		json.NewEncoder(w).Encode(types.OpenAIChatResponse{
+		_ = json.NewEncoder(w).Encode(types.OpenAIChatResponse{
 			Choices: []types.OpenAIChoice{{
 				Message:      &types.OpenAIRespMsg{Role: "assistant", Content: &content},
 				FinishReason: &stop,
@@ -477,7 +477,7 @@ func TestOllamaGenerate_WithImages(t *testing.T) {
 	}
 
 	var resp types.OllamaGenerateResponse
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	if resp.Response != "A beautiful landscape" {
 		t.Errorf("response = %q, want %q", resp.Response, "A beautiful landscape")
 	}
@@ -487,7 +487,7 @@ func TestOllamaGenerate_WithImages(t *testing.T) {
 func TestOllamaGenerate_WithOptions(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req types.OpenAIChatRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 
 		if req.Temperature == nil || *req.Temperature != 0.3 {
 			t.Errorf("temperature = %v, want 0.3", req.Temperature)
@@ -501,7 +501,7 @@ func TestOllamaGenerate_WithOptions(t *testing.T) {
 
 		content := "Deterministic output"
 		stop := "stop"
-		json.NewEncoder(w).Encode(types.OpenAIChatResponse{
+		_ = json.NewEncoder(w).Encode(types.OpenAIChatResponse{
 			Choices: []types.OpenAIChoice{{
 				Message:      &types.OpenAIRespMsg{Role: "assistant", Content: &content},
 				FinishReason: &stop,
@@ -534,14 +534,14 @@ func TestOllamaEmbed_MultiUpstreamRouting(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/embeddings" && r.Method == http.MethodPost {
 			var req types.OpenAIEmbedRequest
-			json.NewDecoder(r.Body).Decode(&req)
+			_ = json.NewDecoder(r.Body).Decode(&req)
 			select {
 			case hitUpstream <- req.Model:
 			default:
 			}
 
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(types.OpenAIEmbedResponse{
+			_ = json.NewEncoder(w).Encode(types.OpenAIEmbedResponse{
 				Data:  []types.OpenAIEmbedData{{Embedding: []float64{0.1, 0.2, 0.3}, Index: 0}},
 				Usage: &types.OpenAIUsage{PromptTokens: 4},
 			})
@@ -580,7 +580,7 @@ func TestOllamaEmbed_MultiUpstreamRouting(t *testing.T) {
 		}
 
 		var resp types.OllamaEmbedResponse
-		json.Unmarshal(w.Body.Bytes(), &resp)
+		_ = json.Unmarshal(w.Body.Bytes(), &resp)
 		if resp.Model != "embed-large:latest" {
 			t.Errorf("model = %q, want %q", resp.Model, "embed-large:latest")
 		}
@@ -711,7 +711,7 @@ func TestOllamaChat_NonStreamWithReasoning(t *testing.T) {
 		content := ""
 		reasoning := "I need to think about this carefully..."
 		stop := "stop"
-		json.NewEncoder(w).Encode(types.OpenAIChatResponse{
+		_ = json.NewEncoder(w).Encode(types.OpenAIChatResponse{
 			Choices: []types.OpenAIChoice{{
 				Message: &types.OpenAIRespMsg{
 					Role:             "assistant",
@@ -741,7 +741,7 @@ func TestOllamaChat_NonStreamWithReasoning(t *testing.T) {
 	}
 
 	var resp types.OllamaChatResponse
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	// When content is empty but reasoning exists, content gets the reasoning
 	if resp.Message.Content != "I need to think about this carefully..." {
 		t.Errorf("content = %q, want reasoning content", resp.Message.Content)
@@ -839,7 +839,7 @@ func TestOllamaTags_MultiUpstream(t *testing.T) {
 	}
 
 	var resp types.OllamaTagsResponse
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 
 	gotModels := make(map[string]types.OllamaModelInfo)
 	for _, m := range resp.Models {
@@ -890,7 +890,7 @@ func TestOllamaShow_MultiUpstream(t *testing.T) {
 			t.Fatalf("status = %d, want 200", w.Code)
 		}
 		var resp types.OllamaShowResponse
-		json.NewDecoder(w.Body).Decode(&resp)
+		_ = json.NewDecoder(w.Body).Decode(&resp)
 		if !strings.Contains(resp.Parameters, "4096") {
 			t.Errorf("parameters = %q, want to contain 4096", resp.Parameters)
 		}
@@ -908,7 +908,7 @@ func TestOllamaShow_MultiUpstream(t *testing.T) {
 			t.Fatalf("status = %d, want 200", w.Code)
 		}
 		var resp types.OllamaShowResponse
-		json.NewDecoder(w.Body).Decode(&resp)
+		_ = json.NewDecoder(w.Body).Decode(&resp)
 		if !strings.Contains(resp.Parameters, "131072") {
 			t.Errorf("parameters = %q, want to contain 131072", resp.Parameters)
 		}
@@ -940,7 +940,7 @@ func TestOllamaPs_MultiUpstream(t *testing.T) {
 	}
 
 	var resp types.OllamaPsResponse
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	if len(resp.Models) != 2 {
 		t.Fatalf("len(models) = %d, want 2", len(resp.Models))
 	}
@@ -974,7 +974,7 @@ func TestOllamaChat_EmptyMessages_Unload(t *testing.T) {
 	}
 
 	var resp types.OllamaChatResponse
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	if !resp.Done {
 		t.Error("done should be true")
 	}
@@ -989,14 +989,14 @@ func TestOllamaChat_StreamMultiUpstream(t *testing.T) {
 	upstreamA := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, "data: {\"id\":\"1\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"response-a\"}}]}\n\ndata: [DONE]\n\n")
+		_, _ = io.WriteString(w, "data: {\"id\":\"1\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"response-a\"}}]}\n\ndata: [DONE]\n\n")
 	}))
 	defer upstreamA.Close()
 
 	upstreamB := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, "data: {\"id\":\"1\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"response-b\"}}]}\n\ndata: [DONE]\n\n")
+		_, _ = io.WriteString(w, "data: {\"id\":\"1\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"response-b\"}}]}\n\ndata: [DONE]\n\n")
 	}))
 	defer upstreamB.Close()
 
@@ -1018,7 +1018,7 @@ func TestOllamaChat_StreamMultiUpstream(t *testing.T) {
 		}
 		lines := strings.Split(strings.TrimSpace(w.Body.String()), "\n")
 		var first types.OllamaChatResponse
-		json.Unmarshal([]byte(lines[0]), &first)
+		_ = json.Unmarshal([]byte(lines[0]), &first)
 		if first.Model != "model-a:latest" {
 			t.Errorf("model = %q, want %q", first.Model, "model-a:latest")
 		}
@@ -1038,7 +1038,7 @@ func TestOllamaChat_StreamMultiUpstream(t *testing.T) {
 		}
 		lines := strings.Split(strings.TrimSpace(w.Body.String()), "\n")
 		var first types.OllamaChatResponse
-		json.Unmarshal([]byte(lines[0]), &first)
+		_ = json.Unmarshal([]byte(lines[0]), &first)
 		if first.Model != "model-b:latest" {
 			t.Errorf("model = %q, want %q", first.Model, "model-b:latest")
 		}

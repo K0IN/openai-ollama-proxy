@@ -16,7 +16,6 @@ import (
 
 	"github.com/k0in/openai-ollama-proxy/internal/config"
 	"github.com/k0in/openai-ollama-proxy/internal/stats"
-	"github.com/k0in/openai-ollama-proxy/internal/types"
 )
 
 type Server struct {
@@ -172,103 +171,6 @@ func (server *Server) firstUpstreamModel() string {
 		}
 	}
 	return ""
-}
-
-func (server *Server) firstUpstreamModelName() string {
-	if server.router != nil {
-		if entry, ok := server.router.Lookup(server.firstUpstreamModel()); ok {
-			return entry.UpstreamModel
-		}
-	}
-	return ""
-}
-
-func (server *Server) firstUpstreamURL() string {
-	if server.router != nil {
-		for _, u := range server.router.AllUpstreams() {
-			if u.URL != "" {
-				return u.URL
-			}
-		}
-	}
-	return ""
-}
-
-func (server *Server) firstUpstreamAPIKey() string {
-	if server.router != nil {
-		for _, u := range server.router.AllUpstreams() {
-			if u.APIKey != "" {
-				return u.APIKey
-			}
-		}
-	}
-	return ""
-}
-
-func (server *Server) currentModelMetadata(ctx context.Context) modelMetadata {
-	metadata := server.fallbackModelMetadata()
-
-	baseURL := server.firstUpstreamURL()
-	if baseURL == "" {
-		return metadata
-	}
-
-	upstreamModel := server.firstUpstreamModelName()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/v1/models", nil)
-	if err != nil {
-		return metadata
-	}
-	if apiKey := server.firstUpstreamAPIKey(); apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+apiKey)
-	}
-
-	resp, err := server.requestClient.Do(req)
-	if err != nil {
-		return metadata
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return metadata
-	}
-
-	var list types.OpenAIModelListResponse
-	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
-		return metadata
-	}
-
-	for _, model := range list.Data {
-		if model.ID != upstreamModel && model.Root != upstreamModel {
-			continue
-		}
-		if model.MaxModelLen > 0 {
-			metadata.ContextLength = model.MaxModelLen
-		}
-		if model.Root != "" {
-			metadata.ParentModel = model.Root
-			applyModelNameHints(&metadata, model.Root)
-		} else {
-			applyModelNameHints(&metadata, model.ID)
-		}
-		return metadata
-	}
-
-	return metadata
-}
-
-func (server *Server) fallbackModelMetadata() modelMetadata {
-	upstreamModel := server.firstUpstreamModelName()
-	metadata := modelMetadata{
-		ContextLength: server.cfg.ModelContextLength,
-		Family:        "transformer",
-		ParentModel:   upstreamModel,
-		Format:        "unknown",
-		ParameterSize: "unknown",
-		Quantization:  "unknown",
-	}
-	applyModelNameHints(&metadata, upstreamModel)
-	return metadata
 }
 
 func applyModelNameHints(metadata *modelMetadata, name string) {
@@ -435,12 +337,6 @@ func (server *Server) probeUpstreamHealth(ctx context.Context) (bool, error) {
 	}
 
 	return false, lastErr
-}
-
-func (server *Server) doUpstreamChatWithRetry(ctx context.Context, payload []byte) (*http.Response, error) {
-	baseURL := server.firstUpstreamURL()
-	apiKey := server.firstUpstreamAPIKey()
-	return server.doUpstreamChatWithRetryForRoute(ctx, payload, baseURL, apiKey)
 }
 
 func (server *Server) doUpstreamChatWithRetryForRoute(ctx context.Context, payload []byte, baseURL, apiKey string) (*http.Response, error) {

@@ -241,7 +241,7 @@ func (s *Stats) Save(path string) error {
 		return err
 	}
 
-	return os.WriteFile(path, payload, 0644)
+	return os.WriteFile(path, payload, 0600)
 }
 
 // LoadFromFile restores aggregated stats from a JSON file previously written
@@ -252,7 +252,7 @@ func LoadFromFile(path string) (*Stats, error) {
 	if path == "" {
 		return New(), nil
 	}
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- path comes from user config, not arbitrary input
 	if err != nil {
 		if os.IsNotExist(err) {
 			return New(), nil

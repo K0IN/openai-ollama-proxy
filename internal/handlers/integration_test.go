@@ -26,13 +26,13 @@ func TestMultiUpstream_Routing(t *testing.T) {
 			t.Errorf("upstream A: Authorization = %q, want %q", r.Header.Get("Authorization"), "Bearer key-a")
 		}
 		var req types.OpenAIChatRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 		if req.Model != "qwen3-vllm" {
 			t.Errorf("upstream A: model = %q, want %q", req.Model, "qwen3-vllm")
 		}
 		hello := "Hello from Upstream A"
 		stop := "stop"
-		json.NewEncoder(w).Encode(types.OpenAIChatResponse{
+		_ = json.NewEncoder(w).Encode(types.OpenAIChatResponse{
 			ID:     "a-123",
 			Object: "chat.completion",
 			Model:  "qwen3-vllm",
@@ -54,13 +54,13 @@ func TestMultiUpstream_Routing(t *testing.T) {
 			t.Errorf("upstream B: Authorization = %q, want %q", r.Header.Get("Authorization"), "Bearer key-b")
 		}
 		var req types.OpenAIChatRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 		if req.Model != "gpt-4o" {
 			t.Errorf("upstream B: model = %q, want %q", req.Model, "gpt-4o")
 		}
 		hello := "Hello from Upstream B"
 		stop := "stop"
-		json.NewEncoder(w).Encode(types.OpenAIChatResponse{
+		_ = json.NewEncoder(w).Encode(types.OpenAIChatResponse{
 			ID:     "b-456",
 			Object: "chat.completion",
 			Model:  "gpt-4o",
@@ -114,7 +114,7 @@ func TestMultiUpstream_Routing(t *testing.T) {
 			t.Fatalf("status = %d, want 200 (body=%s)", w.Code, w.Body.String())
 		}
 		var got types.OllamaChatResponse
-		json.Unmarshal(w.Body.Bytes(), &got)
+		_ = json.Unmarshal(w.Body.Bytes(), &got)
 		if got.Message.Content != "Hello from Upstream A" {
 			t.Errorf("content = %q, want %q", got.Message.Content, "Hello from Upstream A")
 		}
@@ -134,7 +134,7 @@ func TestMultiUpstream_Routing(t *testing.T) {
 			t.Fatalf("status = %d, want 200 (body=%s)", w.Code, w.Body.String())
 		}
 		var got types.OllamaChatResponse
-		json.Unmarshal(w.Body.Bytes(), &got)
+		_ = json.Unmarshal(w.Body.Bytes(), &got)
 		if got.Message.Content != "Hello from Upstream B" {
 			t.Errorf("content = %q, want %q", got.Message.Content, "Hello from Upstream B")
 		}
@@ -383,21 +383,21 @@ func TestMultiUpstream_HealthProbe_AllDown(t *testing.T) {
 func TestMultiUpstream_OpenAIPassthrough(t *testing.T) {
 	upstreamA := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req types.OpenAIChatRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 		if req.Model != "a-model" {
 			t.Errorf("upstream A got model=%q, want %q", req.Model, "a-model")
 		}
-		json.NewEncoder(w).Encode(map[string]any{"model": "a-model", "choices": []any{}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"model": "a-model", "choices": []any{}})
 	}))
 	defer upstreamA.Close()
 
 	upstreamB := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req types.OpenAIChatRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 		if req.Model != "b-model" {
 			t.Errorf("upstream B got model=%q, want %q", req.Model, "b-model")
 		}
-		json.NewEncoder(w).Encode(map[string]any{"model": "b-model", "choices": []any{}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"model": "b-model", "choices": []any{}})
 	}))
 	defer upstreamB.Close()
 
@@ -440,7 +440,7 @@ func TestMultiUpstream_OpenAIPassthrough(t *testing.T) {
 		}
 		// The proxy normalizes the model to cfg.ModelName in non-stream mode
 		var got map[string]any
-		json.Unmarshal(w.Body.Bytes(), &got)
+		_ = json.Unmarshal(w.Body.Bytes(), &got)
 		if got["model"] != "model-a:latest" {
 			t.Errorf("model = %v, want %q", got["model"], "model-a:latest")
 		}
@@ -457,7 +457,7 @@ func TestMultiUpstream_OpenAIPassthrough(t *testing.T) {
 			t.Fatalf("status = %d, want 200 (body=%s)", w.Code, w.Body.String())
 		}
 		var got map[string]any
-		json.Unmarshal(w.Body.Bytes(), &got)
+		_ = json.Unmarshal(w.Body.Bytes(), &got)
 		if got["model"] != "model-a:latest" {
 			t.Errorf("model = %v, want %q", got["model"], "model-a:latest")
 		}
@@ -470,7 +470,7 @@ func TestMultiUpstream_StreamingRouting(t *testing.T) {
 	upstreamA := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, "data: {\"id\":\"a\",\"model\":\"a-model\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"from-a\"}}]}\n\ndata: [DONE]\n\n")
+		_, _ = io.WriteString(w, "data: {\"id\":\"a\",\"model\":\"a-model\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"from-a\"}}]}\n\ndata: [DONE]\n\n")
 		flusher, _ := w.(http.Flusher)
 		if flusher != nil {
 			flusher.Flush()
@@ -481,7 +481,7 @@ func TestMultiUpstream_StreamingRouting(t *testing.T) {
 	upstreamB := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, "data: {\"id\":\"b\",\"model\":\"b-model\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"from-b\"}}]}\n\ndata: [DONE]\n\n")
+		_, _ = io.WriteString(w, "data: {\"id\":\"b\",\"model\":\"b-model\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"from-b\"}}]}\n\ndata: [DONE]\n\n")
 	}))
 	defer upstreamB.Close()
 
@@ -527,7 +527,7 @@ func TestMultiUpstream_StreamingRouting(t *testing.T) {
 			t.Fatalf("expected at least 2 NDJSON lines, got %d", len(lines))
 		}
 		var first types.OllamaChatResponse
-		json.Unmarshal([]byte(lines[0]), &first)
+		_ = json.Unmarshal([]byte(lines[0]), &first)
 		if first.Model != "model-a:latest" {
 			t.Errorf("model = %q, want %q", first.Model, "model-a:latest")
 		}
@@ -551,7 +551,7 @@ func TestMultiUpstream_StreamingRouting(t *testing.T) {
 			t.Fatalf("expected at least 2 NDJSON lines, got %d", len(lines))
 		}
 		var first types.OllamaChatResponse
-		json.Unmarshal([]byte(lines[0]), &first)
+		_ = json.Unmarshal([]byte(lines[0]), &first)
 		if first.Model != "model-b:latest" {
 			t.Errorf("model = %q, want %q", first.Model, "model-b:latest")
 		}
@@ -643,7 +643,7 @@ func TestMultiUpstream_PerModelContextLength(t *testing.T) {
 			t.Fatalf("status = %d, want 200", w.Code)
 		}
 		var got map[string]any
-		json.NewDecoder(w.Body).Decode(&got)
+		_ = json.NewDecoder(w.Body).Decode(&got)
 		params, _ := got["parameters"].(string)
 		if !strings.Contains(params, "4096") {
 			t.Errorf("parameters = %q, want to contain 4096", params)
@@ -661,7 +661,7 @@ func TestMultiUpstream_PerModelContextLength(t *testing.T) {
 			t.Fatalf("status = %d, want 200", w.Code)
 		}
 		var got map[string]any
-		json.NewDecoder(w.Body).Decode(&got)
+		_ = json.NewDecoder(w.Body).Decode(&got)
 		params, _ := got["parameters"].(string)
 		if !strings.Contains(params, "131072") {
 			t.Errorf("parameters = %q, want to contain 131072", params)

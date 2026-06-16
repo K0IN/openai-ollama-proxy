@@ -61,7 +61,7 @@ func TestOllamaGenerate_MultipleImages(t *testing.T) {
 
 		content := "Two images compared"
 		stop := "stop"
-		json.NewEncoder(w).Encode(types.OpenAIChatResponse{
+		_ = json.NewEncoder(w).Encode(types.OpenAIChatResponse{
 			Choices: []types.OpenAIChoice{{
 				Message:      &types.OpenAIRespMsg{Role: "assistant", Content: &content},
 				FinishReason: &stop,
@@ -134,7 +134,7 @@ func TestOllamaChat_WithImages(t *testing.T) {
 
 		content := "A scenic landscape"
 		stop := "stop"
-		json.NewEncoder(w).Encode(types.OpenAIChatResponse{
+		_ = json.NewEncoder(w).Encode(types.OpenAIChatResponse{
 			Choices: []types.OpenAIChoice{{
 				Message:      &types.OpenAIRespMsg{Role: "assistant", Content: &content},
 				FinishReason: &stop,
@@ -206,7 +206,7 @@ func TestOpenAIChat_WithImageURL(t *testing.T) {
 
 		content := "An image description"
 		stop := "stop"
-		json.NewEncoder(w).Encode(types.OpenAIChatResponse{
+		_ = json.NewEncoder(w).Encode(types.OpenAIChatResponse{
 			ID:      "chatcmpl-img",
 			Object:  "chat.completion",
 			Model:   req.Model,
@@ -284,7 +284,7 @@ func TestAnthropicMessages_WithImage(t *testing.T) {
 
 		content := "I see a mountain range"
 		stop := "stop"
-		json.NewEncoder(w).Encode(types.OpenAIChatResponse{
+		_ = json.NewEncoder(w).Encode(types.OpenAIChatResponse{
 			Choices: []types.OpenAIChoice{{
 				Message:      &types.OpenAIRespMsg{Role: "assistant", Content: &content},
 				FinishReason: &stop,
@@ -372,7 +372,7 @@ func TestOpenAIChat_WithInputAudio(t *testing.T) {
 
 		content := "Audio transcription result"
 		stop := "stop"
-		json.NewEncoder(w).Encode(types.OpenAIChatResponse{
+		_ = json.NewEncoder(w).Encode(types.OpenAIChatResponse{
 			ID:      "chatcmpl-audio",
 			Object:  "chat.completion",
 			Model:   req.Model,
@@ -447,7 +447,7 @@ func TestOpenAIChat_ImageContentNotOverwrittenByReasoning(t *testing.T) {
 		reasoning := "Let me analyze this image..."
 		content := "This is a picture of a cat"
 		stop := "stop"
-		json.NewEncoder(w).Encode(types.OpenAIChatResponse{
+		_ = json.NewEncoder(w).Encode(types.OpenAIChatResponse{
 			ID:      "chatcmpl-reasoning",
 			Object:  "chat.completion",
 			Model:   req.Model,
@@ -534,7 +534,7 @@ func TestOllamaGenerate_WithImages_ExactData(t *testing.T) {
 
 		content := "Red pixel detected"
 		stop := "stop"
-		json.NewEncoder(w).Encode(types.OpenAIChatResponse{
+		_ = json.NewEncoder(w).Encode(types.OpenAIChatResponse{
 			Choices: []types.OpenAIChoice{{
 				Message:      &types.OpenAIRespMsg{Role: "assistant", Content: &content},
 				FinishReason: &stop,

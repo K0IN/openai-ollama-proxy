@@ -25,7 +25,7 @@ func TestOpenAIChat_NonStream(t *testing.T) {
 		}
 
 		var req types.OpenAIChatRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 		if req.Model != "gpt-4o-upstream" {
 			t.Errorf("upstream model = %q, want %q", req.Model, "gpt-4o-upstream")
 		}
@@ -38,7 +38,7 @@ func TestOpenAIChat_NonStream(t *testing.T) {
 
 		content := "Hello from GPT-4o!"
 		stop := "stop"
-		json.NewEncoder(w).Encode(types.OpenAIChatResponse{
+		_ = json.NewEncoder(w).Encode(types.OpenAIChatResponse{
 			ID:      "chatcmpl-456",
 			Object:  "chat.completion",
 			Model:   "gpt-4o-upstream",
@@ -299,13 +299,13 @@ func TestOpenAIEmbeddings(t *testing.T) {
 		}
 
 		var req types.OpenAIEmbedRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 		if req.Model != "text-embedding-upstream" {
 			t.Errorf("upstream model = %q, want %q", req.Model, "text-embedding-upstream")
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(types.OpenAIEmbedResponse{
+		_ = json.NewEncoder(w).Encode(types.OpenAIEmbedResponse{
 			Object: "list",
 			Data: []types.OpenAIEmbedData{
 				{Object: "embedding", Embedding: []float64{0.1, 0.2, 0.3}, Index: 0},
@@ -354,7 +354,7 @@ func TestOpenAIEmbeddings(t *testing.T) {
 func TestOpenAIChat_UpstreamError(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTooManyRequests)
-		json.NewEncoder(w).Encode(map[string]string{"error": "rate limited"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "rate limited"})
 	}))
 	defer upstream.Close()
 

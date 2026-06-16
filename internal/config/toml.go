@@ -29,7 +29,7 @@ func expandEnvVars(s string) string {
 }
 
 func LoadFile(path string) (Config, *RoutingTable, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 G703 -- path comes from user config, not arbitrary input
 	if err != nil {
 		return Config{}, nil, fmt.Errorf("reading config file %q: %w", path, err)
 	}
@@ -63,7 +63,7 @@ func Load() (Config, *RoutingTable) {
 
 	cfg, router, err := LoadFile(path)
 	if err != nil {
-		log.Fatalf("failed to load config file %q: %v", path, err)
+		log.Fatalf("failed to load config file %q: %v", path, err) // #nosec G706 -- path is from user's own CONFIG_FILE env var
 	}
 
 	return cfg, router
