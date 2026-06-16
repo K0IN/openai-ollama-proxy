@@ -95,9 +95,8 @@ func TestOpenAIChat_NonStream(t *testing.T) {
 		t.Fatalf("unmarshal error: %v", err)
 	}
 
-	// The proxy normalizes the model name back to the local name
-	if resp.Model != "gpt-4o" {
-		t.Errorf("model = %q, want %q", resp.Model, "gpt-4o")
+	if resp.Model != "gpt-4o-upstream" {
+		t.Errorf("model = %q, want %q", resp.Model, "gpt-4o-upstream")
 	}
 	if len(resp.Choices) != 1 {
 		t.Fatalf("len(choices) = %d, want 1", len(resp.Choices))
@@ -437,4 +436,86 @@ func TestOpenAIChat_StreamWithUsage(t *testing.T) {
 	if !strings.Contains(bodyStr, "Hi") {
 		t.Errorf("response should contain content 'Hi', got: %s", bodyStr)
 	}
+}
+
+// TestOpenAIChat_PreservesUpstreamModelName locks in the contract that the
+// OpenAI passthrough path returns the model name exactly as the upstream
+// reports it (it is NOT rewritten back to the local alias). Regressions here
+// break clients that key off the response model field.
+func TestOpenAIChat_PreservesUpstreamModelName(t *testing.T) {
+	t.Run("non_stream", func(t *testing.T) {
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			content := "ok"
+			stop := "stop"
+			_ = json.NewEncoder(w).Encode(types.OpenAIChatResponse{
+				Model: "gpt-4o-upstream",
+				Choices: []types.OpenAIChoice{{
+					Message:      &types.OpenAIRespMsg{Role: "assistant", Content: &content},
+					FinishReason: &stop,
+				}},
+			})
+		}))
+		defer upstream.Close()
+
+		router, _ := config.BuildRoutingTable([]config.UpstreamConfig{
+			{URL: upstream.URL, Models: []config.ModelMapping{{Upstream: "gpt-4o-upstream", Local: "gpt-4o"}}},
+		}, 65536)
+		server := NewWithClients(config.Config{ListenAddr: ":11434", UpstreamStartupWait: 0, UpstreamRetryInterval: 10 * time.Millisecond},
+			router, &http.Client{Timeout: 5 * time.Second}, &http.Client{Timeout: 5 * time.Second}, stats.New())
+
+		body := `{"model":"gpt-4o","messages":[{"role":"user","content":"Hi"}]}`
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+		w := httptest.NewRecorder()
+		server.handleOpenAIChat(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200 (body=%s)", w.Code, w.Body.String())
+		}
+		var resp types.OpenAIChatResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if resp.Model != "gpt-4o-upstream" {
+			t.Errorf("model = %q, want gpt-4o-upstream (upstream name preserved)", resp.Model)
+		}
+	})
+
+	t.Run("stream", func(t *testing.T) {
+		sseData := strings.Join([]string{
+			`data: {"id":"1","model":"gpt-4o-upstream","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"}}]}`,
+			``,
+			`data: {"id":"1","model":"gpt-4o-upstream","choices":[{"index":0,"finish_reason":"stop","delta":{}}]}`,
+			``,
+			`data: [DONE]`,
+			``,
+		}, "\n")
+
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(sseData))
+		}))
+		defer upstream.Close()
+
+		router, _ := config.BuildRoutingTable([]config.UpstreamConfig{
+			{URL: upstream.URL, Models: []config.ModelMapping{{Upstream: "gpt-4o-upstream", Local: "gpt-4o"}}},
+		}, 65536)
+		server := NewWithClients(config.Config{ListenAddr: ":11434", UpstreamStartupWait: 0, UpstreamRetryInterval: 10 * time.Millisecond},
+			router, &http.Client{Timeout: 5 * time.Second}, &http.Client{Timeout: 5 * time.Second}, stats.New())
+
+		body := `{"model":"gpt-4o","messages":[{"role":"user","content":"Hi"}],"stream":true}`
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+		w := httptest.NewRecorder()
+		server.handleOpenAIChat(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200 (body=%s)", w.Code, w.Body.String())
+		}
+		if strings.Contains(w.Body.String(), `"model":"gpt-4o"`) && !strings.Contains(w.Body.String(), "gpt-4o-upstream") {
+			t.Errorf("stream rewrote model to local alias; want upstream name preserved. body=%s", w.Body.String())
+		}
+		if !strings.Contains(w.Body.String(), "gpt-4o-upstream") {
+			t.Errorf("stream should preserve upstream model name, got: %s", w.Body.String())
+		}
+	})
 }

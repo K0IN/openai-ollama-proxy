@@ -438,11 +438,10 @@ func TestMultiUpstream_OpenAIPassthrough(t *testing.T) {
 		if w.Code != http.StatusOK {
 			t.Fatalf("status = %d, want 200 (body=%s)", w.Code, w.Body.String())
 		}
-		// The proxy normalizes the model to cfg.ModelName in non-stream mode
 		var got map[string]any
 		_ = json.Unmarshal(w.Body.Bytes(), &got)
-		if got["model"] != "model-a:latest" {
-			t.Errorf("model = %v, want %q", got["model"], "model-a:latest")
+		if got["model"] != "a-model" {
+			t.Errorf("model = %v, want %q", got["model"], "a-model")
 		}
 	})
 
@@ -458,8 +457,8 @@ func TestMultiUpstream_OpenAIPassthrough(t *testing.T) {
 		}
 		var got map[string]any
 		_ = json.Unmarshal(w.Body.Bytes(), &got)
-		if got["model"] != "model-a:latest" {
-			t.Errorf("model = %v, want %q", got["model"], "model-a:latest")
+		if got["model"] != "b-model" {
+			t.Errorf("model = %v, want %q", got["model"], "b-model")
 		}
 	})
 }

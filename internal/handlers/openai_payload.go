@@ -111,12 +111,6 @@ func (server *Server) normalizeOpenAIJSON(payload []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	if _, ok := value["model"]; ok {
-		if localModel := server.firstUpstreamModel(); localModel != "" {
-			value["model"] = localModel
-		}
-	}
-
 	delete(value, "prompt_token_ids")
 
 	if choices, ok := value["choices"].([]any); ok {

@@ -346,11 +346,11 @@ func Test_normalizeOpenAIJSON(t *testing.T) {
 		check func(t *testing.T, result map[string]any)
 	}{
 		{
-			name:  "sets model to first upstream model",
+			name:  "preserves original model",
 			input: map[string]any{"model": "original"},
 			check: func(t *testing.T, result map[string]any) {
-				if result["model"] != "qwen3:latest" {
-					t.Errorf("model = %v, want qwen3:latest", result["model"])
+				if result["model"] != "original" {
+					t.Errorf("model = %v, want original", result["model"])
 				}
 			},
 		},

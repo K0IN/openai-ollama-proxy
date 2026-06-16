@@ -190,6 +190,7 @@ type OpenAIChatRequest struct {
 	Model              string                `json:"model"`
 	Messages           []OpenAIMessage       `json:"messages"`
 	Tools              json.RawMessage       `json:"tools,omitempty"`
+	ToolChoice         json.RawMessage       `json:"tool_choice,omitempty"`
 	Stream             bool                  `json:"stream"`
 	Temperature        *float64              `json:"temperature,omitempty"`
 	TopP               *float64              `json:"top_p,omitempty"`

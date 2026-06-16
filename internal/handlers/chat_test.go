@@ -165,6 +165,113 @@ func TestHandleChat_NonStream(t *testing.T) {
 	}
 }
 
+// TestHandleChat_ForwardsOptionsToUpstream verifies that an Ollama client's
+// options (sampling params), tools, and images are translated and forwarded to
+// the upstream OpenAI request. This guards the full handleChat translation
+// path against regressions, not just the translate package in isolation.
+func TestHandleChat_ForwardsOptionsToUpstream(t *testing.T) {
+	server := newTestServer()
+
+	var captured types.OpenAIChatRequest
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&captured)
+		content := "ok"
+		stop := "stop"
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(types.OpenAIChatResponse{
+			Model: "test-model",
+			Choices: []types.OpenAIChoice{{
+				Message:      &types.OpenAIRespMsg{Role: "assistant", Content: &content},
+				FinishReason: &stop,
+			}},
+		})
+	}))
+	defer upstream.Close()
+
+	server.router = upstreamRouter(upstream.URL, "")
+
+	ollamaReq := `{
+		"model":"qwen3:latest",
+		"stream":false,
+		"messages":[
+			{"role":"user","content":"What is this?","images":["iVBORw0KGgo="]}
+		],
+		"tools":[{"type":"function","function":{"name":"get_weather"}}],
+		"options":{
+			"temperature":0.42,
+			"top_p":0.9,
+			"top_k":40,
+			"seed":7,
+			"num_predict":128,
+			"stop":["END"],
+			"frequency_penalty":0.1,
+			"presence_penalty":0.2,
+			"repeat_penalty":1.3
+		}
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/api/chat", strings.NewReader(ollamaReq))
+	w := httptest.NewRecorder()
+	server.handleChat(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body=%s)", w.Code, w.Body.String())
+	}
+
+	// Model must be rewritten to the upstream name.
+	if captured.Model != "test-model" {
+		t.Errorf("upstream model = %q, want test-model", captured.Model)
+	}
+	// Sampling params.
+	if captured.Temperature == nil || *captured.Temperature != 0.42 {
+		t.Errorf("temperature = %v, want 0.42", captured.Temperature)
+	}
+	if captured.TopP == nil || *captured.TopP != 0.9 {
+		t.Errorf("top_p = %v, want 0.9", captured.TopP)
+	}
+	if captured.TopK == nil || *captured.TopK != 40 {
+		t.Errorf("top_k = %v, want 40", captured.TopK)
+	}
+	if captured.Seed == nil || *captured.Seed != 7 {
+		t.Errorf("seed = %v, want 7", captured.Seed)
+	}
+	if captured.MaxTokens == nil || *captured.MaxTokens != 128 {
+		t.Errorf("max_tokens = %v, want 128 (from num_predict)", captured.MaxTokens)
+	}
+	if len(captured.Stop) != 1 || captured.Stop[0] != "END" {
+		t.Errorf("stop = %v, want [END]", captured.Stop)
+	}
+	if captured.FrequencyPenalty == nil || *captured.FrequencyPenalty != 0.1 {
+		t.Errorf("frequency_penalty = %v, want 0.1", captured.FrequencyPenalty)
+	}
+	if captured.PresencePenalty == nil || *captured.PresencePenalty != 0.2 {
+		t.Errorf("presence_penalty = %v, want 0.2", captured.PresencePenalty)
+	}
+	if captured.RepetitionPenalty == nil || *captured.RepetitionPenalty != 1.3 {
+		t.Errorf("repetition_penalty = %v, want 1.3 (from repeat_penalty)", captured.RepetitionPenalty)
+	}
+	// Tools forwarded.
+	if len(captured.Tools) == 0 || !strings.Contains(string(captured.Tools), "get_weather") {
+		t.Errorf("tools not forwarded: %s", captured.Tools)
+	}
+	// Image translated into a multimodal content part.
+	if len(captured.Messages) != 1 {
+		t.Fatalf("len(messages) = %d, want 1", len(captured.Messages))
+	}
+	var parts []types.OpenAIContentPart
+	if err := json.Unmarshal(captured.Messages[0].Content, &parts); err != nil {
+		t.Fatalf("message content is not multimodal: %v (%s)", err, captured.Messages[0].Content)
+	}
+	var sawImage bool
+	for _, p := range parts {
+		if p.Type == "image_url" && p.ImageURL != nil && strings.HasPrefix(p.ImageURL.URL, "data:image/") {
+			sawImage = true
+		}
+	}
+	if !sawImage {
+		t.Errorf("image not forwarded as data URL: %+v", parts)
+	}
+}
+
 func TestHandleChat_Stream(t *testing.T) {
 	server := newTestServer()
 	sseData := strings.Join([]string{

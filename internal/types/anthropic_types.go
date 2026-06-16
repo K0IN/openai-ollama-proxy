@@ -14,6 +14,20 @@ type AnthropicMessageRequest struct {
 	StopSequences []string           `json:"stop_sequences,omitempty"`
 	Metadata      map[string]string  `json:"metadata,omitempty"`
 	Tools         json.RawMessage    `json:"tools,omitempty"`
+	ToolChoice    json.RawMessage    `json:"tool_choice,omitempty"`
+}
+
+// AnthropicTool mirrors a single entry in the Anthropic `tools` array.
+type AnthropicTool struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	InputSchema json.RawMessage `json:"input_schema,omitempty"`
+}
+
+// AnthropicToolChoice mirrors the Anthropic `tool_choice` object.
+type AnthropicToolChoice struct {
+	Type string `json:"type"`
+	Name string `json:"name,omitempty"`
 }
 
 type AnthropicMessage struct {
@@ -97,6 +111,32 @@ type AnthropicContentBlockDelta struct {
 type AnthropicTextDelta struct {
 	Type string `json:"type"`
 	Text string `json:"text,omitempty"`
+}
+
+// AnthropicInputJSONDeltaEvent carries incremental tool-call argument JSON for
+// a tool_use content block during streaming.
+type AnthropicInputJSONDeltaEvent struct {
+	Type  string                  `json:"type"`
+	Index int                     `json:"index"`
+	Delta AnthropicInputJSONDelta `json:"delta"`
+}
+
+type AnthropicInputJSONDelta struct {
+	Type        string `json:"type"`
+	PartialJSON string `json:"partial_json"`
+}
+
+// AnthropicThinkingDeltaEvent carries incremental reasoning text for a
+// thinking content block during streaming.
+type AnthropicThinkingDeltaEvent struct {
+	Type  string                 `json:"type"`
+	Index int                    `json:"index"`
+	Delta AnthropicThinkingDelta `json:"delta"`
+}
+
+type AnthropicThinkingDelta struct {
+	Type     string `json:"type"`
+	Thinking string `json:"thinking"`
 }
 
 type AnthropicContentBlockStopEvent struct {

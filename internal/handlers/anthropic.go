@@ -145,10 +145,14 @@ func (server *Server) handleAnthropicStream(w http.ResponseWriter, body io.Reade
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 0, 256*1024), 10*1024*1024)
 
-	messageID := fmt.Sprintf("msg_%s_%d", model, time.Now().UnixMilli())
-	contentIndex := 0
-	hasSentContentStart := false
-	var accumulatedContent strings.Builder
+	st := &anthropicStreamState{
+		writer:    w,
+		flusher:   flusher,
+		messageID: fmt.Sprintf("msg_%s_%d", model, time.Now().UnixMilli()),
+		model:     model,
+	}
+
+	var finishReason *string
 	var promptTokens, completionTokens int
 
 	for scanner.Scan() {
@@ -168,119 +172,46 @@ func (server *Server) handleAnthropicStream(w http.ResponseWriter, body io.Reade
 			continue
 		}
 
+		if chunk.Usage != nil {
+			promptTokens = chunk.Usage.PromptTokens
+			completionTokens = chunk.Usage.CompletionTokens
+		}
+
 		if len(chunk.Choices) == 0 {
 			continue
 		}
 
 		choice := chunk.Choices[0]
-
-		if !hasSentContentStart {
-			msgStart := types.AnthropicMessageStartEvent{
-				Type: "message_start",
-				Message: types.AnthropicMessageResponse{
-					ID:      messageID,
-					Type:    "message",
-					Role:    "assistant",
-					Model:   model,
-					Content: []types.AnthropicContentBlock{},
-				},
-			}
-			writeAnthropicSSE(w, "message_start", msgStart)
-			flusher.Flush()
-
-			contentBlockStart := types.AnthropicContentBlockStartEvent{
-				Type:  "content_block_start",
-				Index: contentIndex,
-				ContentBlock: types.AnthropicContentBlock{
-					Type: "text",
-					Text: "",
-				},
-			}
-			writeAnthropicSSE(w, "content_block_start", contentBlockStart)
-			flusher.Flush()
-
-			hasSentContentStart = true
-		}
+		st.emitMessageStart()
 
 		delta := choice.Delta
-		if delta != nil && delta.Content != nil && *delta.Content != "" {
-			timings.markFirstVisibleOutput()
-			accumulatedContent.WriteString(*delta.Content)
-			textDelta := types.AnthropicContentBlockDeltaEvent{
-				Type:  "content_block_delta",
-				Index: contentIndex,
-				Delta: types.AnthropicTextDelta{
-					Type: "text_delta",
-					Text: *delta.Content,
-				},
+		if delta != nil {
+			reasoning := ""
+			if delta.ReasoningContent != nil {
+				reasoning = *delta.ReasoningContent
+			} else if delta.Reasoning != nil {
+				reasoning = *delta.Reasoning
 			}
-			writeAnthropicSSE(w, "content_block_delta", textDelta)
-			flusher.Flush()
-		}
+			if reasoning != "" {
+				timings.markFirstVisibleOutput()
+				st.emitThinkingDelta(reasoning)
+			}
 
-		if delta != nil && len(delta.ToolCalls) > 0 {
-			timings.markFirstVisibleOutput()
-			for _, tc := range delta.ToolCalls {
-				if tc.Function.Name != "" {
-					toolContentBlock := types.AnthropicContentBlockStartEvent{
-						Type:  "content_block_start",
-						Index: contentIndex + 1,
-						ContentBlock: types.AnthropicContentBlock{
-							Type:  "tool_use",
-							ID:    tc.ID,
-							Name:  tc.Function.Name,
-							Input: json.RawMessage(tc.Function.Arguments),
-						},
-					}
-					writeAnthropicSSE(w, "content_block_start", toolContentBlock)
-					flusher.Flush()
-					contentIndex++
+			if delta.Content != nil && *delta.Content != "" {
+				timings.markFirstVisibleOutput()
+				st.emitTextDelta(*delta.Content)
+			}
 
-					writeAnthropicSSE(w, "content_block_stop", types.AnthropicContentBlockStopEvent{
-						Type: "content_block_stop", Index: contentIndex,
-					})
-					flusher.Flush()
+			if len(delta.ToolCalls) > 0 {
+				timings.markFirstVisibleOutput()
+				for _, tc := range delta.ToolCalls {
+					st.emitToolCallDelta(tc)
 				}
 			}
 		}
 
-		if choice.FinishReason != nil || chunk.Usage != nil {
-			timings.markComplete()
-
-			if chunk.Usage != nil {
-				promptTokens = chunk.Usage.PromptTokens
-				completionTokens = chunk.Usage.CompletionTokens
-			}
-
-			stopReason := mapAnthropicStopReason(choice.FinishReason)
-
-			writeAnthropicSSE(w, "content_block_stop", types.AnthropicContentBlockStopEvent{
-				Type: "content_block_stop", Index: contentIndex,
-			})
-			flusher.Flush()
-
-			msgDelta := types.AnthropicMessageDeltaEvent{
-				Type: "message_delta",
-				Delta: types.AnthropicMessageDelta{
-					StopReason:   stopReason,
-					StopSequence: nil,
-				},
-				Usage: &types.AnthropicUsage{
-					InputTokens:  promptTokens,
-					OutputTokens: completionTokens,
-				},
-			}
-			writeAnthropicSSE(w, "message_delta", msgDelta)
-			flusher.Flush()
-
-			writeAnthropicSSE(w, "message_stop", types.AnthropicMessageStopEvent{
-				Type: "message_stop",
-			})
-			flusher.Flush()
-
-			server.stats.Record(model, promptTokens, completionTokens, time.Duration(timings.evalDuration()))
-
-			return
+		if choice.FinishReason != nil {
+			finishReason = choice.FinishReason
 		}
 	}
 
@@ -288,30 +219,153 @@ func (server *Server) handleAnthropicStream(w http.ResponseWriter, body io.Reade
 		log.Printf("anthropic stream scanner error: %v", err)
 	}
 
-	if hasSentContentStart {
-		timings.markComplete()
-		writeAnthropicSSE(w, "content_block_stop", types.AnthropicContentBlockStopEvent{
-			Type: "content_block_stop", Index: contentIndex,
-		})
-		flusher.Flush()
+	timings.markComplete()
 
-		msgDelta := types.AnthropicMessageDeltaEvent{
-			Type: "message_delta",
-			Delta: types.AnthropicMessageDelta{
-				StopReason: "end_turn",
-			},
-		}
-		writeAnthropicSSE(w, "message_delta", msgDelta)
-		flusher.Flush()
+	// Ensure the stream is well-formed even when upstream sent nothing.
+	st.emitMessageStart()
+	st.closeOpenBlock()
 
-		writeAnthropicSSE(w, "message_stop", types.AnthropicMessageStopEvent{
-			Type: "message_stop",
-		})
-		flusher.Flush()
+	stopReason := "end_turn"
+	if finishReason != nil {
+		stopReason = mapAnthropicStopReason(finishReason)
 	}
 
-	if completionTokens > 0 {
+	msgDelta := types.AnthropicMessageDeltaEvent{
+		Type: "message_delta",
+		Delta: types.AnthropicMessageDelta{
+			StopReason:   stopReason,
+			StopSequence: nil,
+		},
+		Usage: &types.AnthropicUsage{
+			InputTokens:  promptTokens,
+			OutputTokens: completionTokens,
+		},
+	}
+	writeAnthropicSSE(w, "message_delta", msgDelta)
+	flusher.Flush()
+
+	writeAnthropicSSE(w, "message_stop", types.AnthropicMessageStopEvent{Type: "message_stop"})
+	flusher.Flush()
+
+	if completionTokens > 0 || promptTokens > 0 {
 		server.stats.Record(model, promptTokens, completionTokens, time.Duration(timings.evalDuration()))
+	}
+}
+
+// anthropicStreamState tracks the open content block while translating an
+// OpenAI SSE stream into Anthropic Messages streaming events. Anthropic
+// requires content blocks to be opened, delta'd, and closed in sequential
+// index order, so only one block is open at a time.
+type anthropicStreamState struct {
+	writer    http.ResponseWriter
+	flusher   http.Flusher
+	messageID string
+	model     string
+
+	startedMessage bool
+	nextIndex      int
+
+	// open block tracking. blockKind is "", "text", "thinking", or "tool".
+	blockKind     string
+	blockIndex    int
+	toolCallIndex int // OpenAI tool-call index of the currently open tool block
+}
+
+func (st *anthropicStreamState) emitMessageStart() {
+	if st.startedMessage {
+		return
+	}
+	st.startedMessage = true
+	writeAnthropicSSE(st.writer, "message_start", types.AnthropicMessageStartEvent{
+		Type: "message_start",
+		Message: types.AnthropicMessageResponse{
+			ID:      st.messageID,
+			Type:    "message",
+			Role:    "assistant",
+			Model:   st.model,
+			Content: []types.AnthropicContentBlock{},
+		},
+	})
+	st.flusher.Flush()
+}
+
+func (st *anthropicStreamState) closeOpenBlock() {
+	if st.blockKind == "" {
+		return
+	}
+	writeAnthropicSSE(st.writer, "content_block_stop", types.AnthropicContentBlockStopEvent{
+		Type:  "content_block_stop",
+		Index: st.blockIndex,
+	})
+	st.flusher.Flush()
+	st.blockKind = ""
+}
+
+func (st *anthropicStreamState) openBlock(kind string, block types.AnthropicContentBlock) {
+	st.blockKind = kind
+	st.blockIndex = st.nextIndex
+	st.nextIndex++
+	writeAnthropicSSE(st.writer, "content_block_start", types.AnthropicContentBlockStartEvent{
+		Type:         "content_block_start",
+		Index:        st.blockIndex,
+		ContentBlock: block,
+	})
+	st.flusher.Flush()
+}
+
+func (st *anthropicStreamState) emitThinkingDelta(text string) {
+	if st.blockKind != "thinking" {
+		st.closeOpenBlock()
+		st.openBlock("thinking", types.AnthropicContentBlock{Type: "thinking"})
+	}
+	writeAnthropicSSE(st.writer, "content_block_delta", types.AnthropicThinkingDeltaEvent{
+		Type:  "content_block_delta",
+		Index: st.blockIndex,
+		Delta: types.AnthropicThinkingDelta{Type: "thinking_delta", Thinking: text},
+	})
+	st.flusher.Flush()
+}
+
+func (st *anthropicStreamState) emitTextDelta(text string) {
+	if st.blockKind != "text" {
+		st.closeOpenBlock()
+		st.openBlock("text", types.AnthropicContentBlock{Type: "text", Text: ""})
+	}
+	writeAnthropicSSE(st.writer, "content_block_delta", types.AnthropicContentBlockDeltaEvent{
+		Type:  "content_block_delta",
+		Index: st.blockIndex,
+		Delta: types.AnthropicTextDelta{Type: "text_delta", Text: text},
+	})
+	st.flusher.Flush()
+}
+
+func (st *anthropicStreamState) emitToolCallDelta(tc types.OpenAIToolCall) {
+	tcIndex := 0
+	if tc.Index != nil {
+		tcIndex = *tc.Index
+	}
+
+	// Open a new tool_use block when this is a different tool call than the
+	// one currently open (new index, or a fresh call signalled by a name).
+	needNewBlock := st.blockKind != "tool" || st.toolCallIndex != tcIndex
+	if needNewBlock {
+		st.closeOpenBlock()
+		st.openBlock("tool", types.AnthropicContentBlock{
+			Type:  "tool_use",
+			ID:    tc.ID,
+			Name:  tc.Function.Name,
+			Input: json.RawMessage(`{}`),
+		})
+		st.toolCallIndex = tcIndex
+	}
+
+	if tc.Function.Arguments != "" {
+		writeAnthropicSSE(st.writer, "content_block_delta", types.AnthropicInputJSONDeltaEvent{
+			Type:  "content_block_delta",
+			Index: st.blockIndex,
+			Delta: types.AnthropicInputJSONDelta{Type: "input_json_delta", PartialJSON: tc.Function.Arguments},
+		})
+		st.flusher.Flush()
 	}
 }
 
@@ -333,8 +387,13 @@ func translateAnthropicToOpenAI(anthropicReq types.AnthropicMessageRequest, maxT
 	if len(anthropicReq.StopSequences) > 0 {
 		openAIReq.Stop = anthropicReq.StopSequences
 	}
-	if anthropicReq.Tools != nil {
-		openAIReq.Tools = anthropicReq.Tools
+	if tools, err := convertAnthropicTools(anthropicReq.Tools); err != nil {
+		return openAIReq, err
+	} else if tools != nil {
+		openAIReq.Tools = tools
+	}
+	if choice := convertAnthropicToolChoice(anthropicReq.ToolChoice); choice != nil {
+		openAIReq.ToolChoice = choice
 	}
 
 	var msgs []types.OpenAIMessage
@@ -547,6 +606,98 @@ func mapAnthropicStopReason(finishReason *string) string {
 		return "content_filter"
 	default:
 		return "end_turn"
+	}
+}
+
+// convertAnthropicTools translates the Anthropic `tools` array
+// (`{name, description, input_schema}`) into the OpenAI function-tool schema
+// (`{type:"function", function:{name, description, parameters}}`). It returns
+// nil when there are no tools so the field is omitted from the upstream
+// request (some backends reject empty tool arrays).
+func convertAnthropicTools(raw json.RawMessage) (json.RawMessage, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, nil
+	}
+
+	var anthropicTools []types.AnthropicTool
+	if err := json.Unmarshal(raw, &anthropicTools); err != nil {
+		return nil, fmt.Errorf("invalid tools: %w", err)
+	}
+	if len(anthropicTools) == 0 {
+		return nil, nil
+	}
+
+	type openAIFunction struct {
+		Name        string          `json:"name"`
+		Description string          `json:"description,omitempty"`
+		Parameters  json.RawMessage `json:"parameters,omitempty"`
+	}
+	type openAITool struct {
+		Type     string         `json:"type"`
+		Function openAIFunction `json:"function"`
+	}
+
+	openAITools := make([]openAITool, 0, len(anthropicTools))
+	for _, tool := range anthropicTools {
+		if tool.Name == "" {
+			continue
+		}
+		params := tool.InputSchema
+		if len(params) == 0 || string(params) == "null" {
+			params = json.RawMessage(`{"type":"object"}`)
+		}
+		openAITools = append(openAITools, openAITool{
+			Type: "function",
+			Function: openAIFunction{
+				Name:        tool.Name,
+				Description: tool.Description,
+				Parameters:  params,
+			},
+		})
+	}
+
+	if len(openAITools) == 0 {
+		return nil, nil
+	}
+
+	return json.Marshal(openAITools)
+}
+
+// convertAnthropicToolChoice maps Anthropic `tool_choice` to its OpenAI
+// equivalent. Anthropic uses {"type":"auto"|"any"|"tool", "name":"..."}.
+// OpenAI uses "auto"/"required"/"none" strings or
+// {"type":"function","function":{"name":"..."}}.
+func convertAnthropicToolChoice(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+
+	var choice types.AnthropicToolChoice
+	if err := json.Unmarshal(raw, &choice); err != nil {
+		return nil
+	}
+
+	switch choice.Type {
+	case "auto":
+		return json.RawMessage(`"auto"`)
+	case "any":
+		return json.RawMessage(`"required"`)
+	case "none":
+		return json.RawMessage(`"none"`)
+	case "tool":
+		if choice.Name == "" {
+			return json.RawMessage(`"auto"`)
+		}
+		out, err := json.Marshal(map[string]any{
+			"type":     "function",
+			"function": map[string]string{"name": choice.Name},
+		})
+		if err != nil {
+			return nil
+		}
+		return out
+	default:
+		return nil
 	}
 }
 
