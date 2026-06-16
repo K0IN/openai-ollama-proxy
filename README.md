@@ -104,6 +104,7 @@ docker compose -f examples/docker-compose-qwen2.5-coder-14b.yml up -d
 
 | Variable | Default | Notes |
 |---|---|---|
+| `CONFIG_FILE` | *(empty)* | path to a TOML config file (see [proxy.toml](proxy.toml)); if not set, the proxy runs in env-var-only mode |
 | `LISTEN_ADDR` | `:11434` | host:port the proxy binds to |
 | `UPSTREAM_BASE_URL` | `http://localhost:8000` | upstream OpenAI-compatible API, must be `http(s)://host[:port]` |
 | `UPSTREAM_API_KEY` | *(empty)* | sent as `Authorization: Bearer …`; required when upstream enforces it |
@@ -111,6 +112,8 @@ docker compose -f examples/docker-compose-qwen2.5-coder-14b.yml up -d
 | `MODEL_NAME` | `generic:latest` | model name presented to Ollama clients |
 | `MODEL_CONTEXT_LENGTH` | `65536` | reported via `/api/show` and `/v1/models` |
 | `OLLAMA_VERSION` | `0.6.4` | reported by `/api/version`, set this to whatever vscode wants |
+| `PROXY_API_KEY` | *(empty)* | require clients to send this via `Authorization: Bearer` or `X-API-Key`; if empty, all requests are accepted |
+| `STATS_STORE_PATH` | *(empty)* | path to persist stats JSON so they survive restarts |
 | `UPSTREAM_STARTUP_WAIT` | `30m` | retry budget while upstream is loading the model |
 | `UPSTREAM_RETRY_INTERVAL` | `2s` | delay between startup retries |
 | `HTTP_REQUEST_TIMEOUT` | `30s` | cap for short upstream calls (embeddings, models, health) |

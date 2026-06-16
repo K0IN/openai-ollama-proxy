@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -13,26 +14,22 @@ import (
 	"github.com/k0in/openai-ollama-proxy/internal/config"
 	"github.com/k0in/openai-ollama-proxy/internal/handlers"
 	applogging "github.com/k0in/openai-ollama-proxy/internal/logging"
+	"github.com/k0in/openai-ollama-proxy/internal/stats"
 )
 
 func main() {
 	cfg, router := config.Load()
-	server := handlers.NewWithClients(cfg, router, config.NewHTTPClient(cfg), config.NewRequestHTTPClient(cfg))
 
-	log.Printf("openai-ollama-proxy listening on %s", cfg.ListenAddr)
-	log.Printf("  upstream URL:        %s", cfg.UpstreamBaseURL)
-	log.Printf("  upstream model:      %s", cfg.UpstreamModel)
-	log.Printf("  Ollama model:        %s", cfg.ModelName)
-	log.Printf("  Anthropic API:       %s/v1/messages", cfg.ListenAddr)
-	log.Printf("  max request bytes:   %d", cfg.MaxRequestBytes)
-	log.Printf("  request timeout:     %s", cfg.HTTPRequestTimeout)
-	log.Printf("  stream timeout:      %s", cfg.HTTPStreamTimeout)
-	log.Printf("  shutdown timeout:    %s", cfg.ShutdownTimeout)
-	if cfg.Debug {
-		log.Printf("  debug logging:       enabled")
+	// Load persisted stats if a store path is configured.
+	st, err := stats.LoadFromFile(cfg.StatsStorePath)
+	if err != nil {
+		log.Printf("failed to load stats from %q: %v (starting fresh)", cfg.StatsStorePath, err)
+		st = stats.New()
 	}
 
-	handler := applogging.MaxBytes(cfg.MaxRequestBytes, applogging.Middleware(cfg.Debug, server.Routes()))
+	server := handlers.NewWithClients(cfg, router, config.NewHTTPClient(cfg), config.NewRequestHTTPClient(cfg), st)
+
+	handler := applogging.MaxBytes(cfg.MaxRequestBytes, applogging.Middleware(cfg.Debug, cfg.LogMaxBodyBytes, applogging.AuthMiddleware(cfg.ProxyAPIKey, server.Routes())))
 
 	httpServer := &http.Server{
 		Addr:              cfg.ListenAddr,
@@ -42,6 +39,63 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	statsStorePath := cfg.StatsStorePath
+	if statsStorePath != "" {
+		// Periodic save every 30 seconds so stats survive a crash.
+		go func() {
+			ticker := time.NewTicker(30 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					if err := st.Save(statsStorePath); err != nil {
+						log.Printf("error saving stats: %v", err)
+					}
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+	}
+
+	log.Printf("openai-ollama-proxy listening on %s", cfg.ListenAddr)
+	if router != nil && len(router.AllUpstreams()) > 0 {
+		for _, u := range router.AllUpstreams() {
+			apiKeyStatus := "not set"
+			if u.APIKey != "" {
+				apiKeyStatus = "set"
+			}
+			parsedURL, _ := url.Parse(u.URL)
+			displayURL := u.URL
+			if parsedURL != nil {
+				displayURL = parsedURL.Host
+			}
+			log.Printf("  provider: %s  (API key: %s)", displayURL, apiKeyStatus)
+			for _, m := range u.Models {
+				log.Printf("    %s -> %s", m.Local, m.Upstream)
+			}
+		}
+	} else {
+		log.Printf("  upstream URL:        %s", cfg.UpstreamBaseURL)
+		log.Printf("  upstream model:      %s", cfg.UpstreamModel)
+		log.Printf("  Ollama model:        %s", cfg.ModelName)
+	}
+	log.Printf("  max request bytes:   %d", cfg.MaxRequestBytes)
+	log.Printf("  request timeout:     %s", cfg.HTTPRequestTimeout)
+	log.Printf("  stream timeout:      %s", cfg.HTTPStreamTimeout)
+	log.Printf("  shutdown timeout:    %s", cfg.ShutdownTimeout)
+	if cfg.Debug {
+		log.Printf("  debug logging:       enabled")
+	}
+	if cfg.ProxyAPIKey != "" {
+		log.Printf("  proxy API key:       configured")
+	}
+	if statsStorePath != "" {
+		log.Printf("  stats store:         %s", statsStorePath)
+	} else {
+		log.Printf("  stats store:         not stored")
+	}
 
 	serverErr := make(chan error, 1)
 	go func() {
@@ -61,6 +115,12 @@ func main() {
 		}
 	case <-ctx.Done():
 		log.Printf("shutdown signal received, draining for up to %s", cfg.ShutdownTimeout)
+		// Save stats before shutting down
+		if statsStorePath != "" {
+			if err := st.Save(statsStorePath); err != nil {
+				log.Printf("error saving stats on shutdown: %v", err)
+			}
+		}
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 		defer cancel()
 		if err := httpServer.Shutdown(shutdownCtx); err != nil {

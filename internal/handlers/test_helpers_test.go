@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/k0in/openai-ollama-proxy/internal/config"
+	"github.com/k0in/openai-ollama-proxy/internal/stats"
 	"github.com/k0in/openai-ollama-proxy/internal/types"
 )
 
@@ -29,7 +30,7 @@ func newTestServer() *Server {
 		// Legacy flat-config tests: create an empty routing table.
 		router = &config.RoutingTable{}
 	}
-	return New(cfg, router, &http.Client{Timeout: 5 * time.Second})
+	return New(cfg, router, &http.Client{Timeout: 5 * time.Second}, stats.New())
 }
 
 func withUpstreamHealthServer(t *testing.T, server *Server, statusCode int, body string) func() {

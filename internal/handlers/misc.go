@@ -37,6 +37,8 @@ func (server *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 
 	defer func() { _ = r.Body.Close() }()
 	var req struct {
+		Model    string            `json:"model"`
+		From     string            `json:"from,omitempty"`
 		Stream   *bool             `json:"stream,omitempty"`
 		System   string            `json:"system,omitempty"`
 		Template string            `json:"template,omitempty"`
@@ -57,7 +59,18 @@ func (server *Server) handleCopy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = r.Body.Close() }()
-	_, _ = io.Copy(io.Discard, r.Body)
+	var req struct {
+		Source      string `json:"source"`
+		Destination string `json:"destination"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+		http.Error(w, "invalid json: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if req.Source == "" || req.Destination == "" {
+		http.Error(w, "source and destination are required", http.StatusBadRequest)
+		return
+	}
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -279,6 +292,17 @@ func (server *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 
 	snapshot := server.stats.Snapshot()
 
+	perModelStats := make(map[string]interface{}, len(snapshot.PerModel))
+	for model, ms := range snapshot.PerModel {
+		perModelStats[model] = map[string]interface{}{
+			"total_input_tokens":    ms.TotalInput,
+			"total_output_tokens":   ms.TotalOutput,
+			"total_tokens":          ms.TotalTokens,
+			"total_requests":        ms.Requests,
+			"output_tokens_per_sec": ms.OutputTokensPerSec,
+		}
+	}
+
 	resp := map[string]interface{}{
 		"model": snapshot.Model,
 		"stats": map[string]interface{}{
@@ -295,6 +319,7 @@ func (server *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 			"avg_input_tokens_per_sec":  snapshot.AvgInputTokensPerSec,
 			"avg_output_tokens_per_sec": snapshot.AvgOutputTokensPerSec,
 			"avg_tokens_per_sec":        snapshot.AvgTokensPerSec,
+			"per_model":                 perModelStats,
 		},
 	}
 

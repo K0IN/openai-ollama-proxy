@@ -6,7 +6,7 @@
 
 listen_addr = ":11434"
 ollama_version = "0.6.4"
-model_context_length = 96000
+model_context_length = 65536
 
 # How long to wait for upstreams to become healthy on startup.
 upstream_startup_wait = "30m"

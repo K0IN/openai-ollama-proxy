@@ -20,14 +20,17 @@ type Config struct {
 	UpstreamModel         string           `toml:"upstream_model"`
 	ModelName             string           `toml:"model_name"`
 	ModelContextLength    int              `toml:"model_context_length"`
+	ProxyAPIKey           string           `toml:"proxy_api_key"`
 	OllamaVersion         string           `toml:"ollama_version"`
 	UpstreamStartupWait   time.Duration    `toml:"upstream_startup_wait"`
 	UpstreamRetryInterval time.Duration    `toml:"upstream_retry_interval"`
+	LogMaxBodyBytes       int              `toml:"log_max_body_bytes"`
 	MaxRequestBytes       int64            `toml:"max_request_bytes"`
 	ShutdownTimeout       time.Duration    `toml:"shutdown_timeout"`
 	HTTPRequestTimeout    time.Duration    `toml:"http_request_timeout"`
 	HTTPStreamTimeout     time.Duration    `toml:"http_stream_timeout"`
 	Debug                 bool             `toml:"debug"`
+	StatsStorePath        string           `toml:"stats_store_path"`
 	Upstreams             []UpstreamConfig `toml:"upstream"`
 }
 
@@ -50,6 +53,9 @@ func (c *Config) applyDefaults() {
 	if c.MaxRequestBytes <= 0 {
 		c.MaxRequestBytes = 32 << 20 // 32 MiB
 	}
+	if c.LogMaxBodyBytes <= 0 {
+		c.LogMaxBodyBytes = 4096
+	}
 	if c.ShutdownTimeout <= 0 {
 		c.ShutdownTimeout = 30 * time.Second
 	}
@@ -69,6 +75,7 @@ func LoadFromEnv() Config {
 		UpstreamModel:         envOr("UPSTREAM_MODEL", "default"),
 		ModelName:             envOr("MODEL_NAME", "generic:latest"),
 		ModelContextLength:    envOrInt("MODEL_CONTEXT_LENGTH", 65536),
+		ProxyAPIKey:           envOr("PROXY_API_KEY", ""),
 		OllamaVersion:         envOr("OLLAMA_VERSION", "0.6.4"),
 		UpstreamStartupWait:   envOrDuration("UPSTREAM_STARTUP_WAIT", 30*time.Minute),
 		UpstreamRetryInterval: envOrDuration("UPSTREAM_RETRY_INTERVAL", 2*time.Second),
@@ -76,6 +83,7 @@ func LoadFromEnv() Config {
 		ShutdownTimeout:       envOrDuration("SHUTDOWN_TIMEOUT", 30*time.Second),
 		HTTPRequestTimeout:    envOrDuration("HTTP_REQUEST_TIMEOUT", 30*time.Second),
 		HTTPStreamTimeout:     envOrDuration("HTTP_STREAM_TIMEOUT", 5*time.Minute),
+		LogMaxBodyBytes:       envOrInt("LOG_MAX_BODY_BYTES", 4096),
 		Debug:                 os.Getenv("DEBUG") == "true" || os.Getenv("DEBUG") == "1",
 	}
 

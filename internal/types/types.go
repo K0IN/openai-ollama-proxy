@@ -93,9 +93,13 @@ type OllamaGenerateResponse struct {
 }
 
 type OllamaEmbedRequest struct {
-	Model  string          `json:"model"`
-	Input  json.RawMessage `json:"input"`
-	Prompt string          `json:"prompt,omitempty"`
+	Model      string          `json:"model"`
+	Input      json.RawMessage `json:"input"`
+	Prompt     string          `json:"prompt,omitempty"`
+	KeepAlive  json.RawMessage `json:"keep_alive,omitempty"`
+	Truncate   *bool           `json:"truncate,omitempty"`
+	Dimensions int             `json:"dimensions,omitempty"`
+	Options    OllamaOptions   `json:"options,omitempty"`
 }
 
 type OllamaPullRequest struct {
@@ -164,6 +168,8 @@ type OllamaShowResponse struct {
 	Details      OllamaModelDetails `json:"details"`
 	ModelInfo    map[string]any     `json:"model_info"`
 	Capabilities []string           `json:"capabilities"`
+	License      string             `json:"license,omitempty"`
+	System       string             `json:"system,omitempty"`
 }
 
 type OllamaPsResponse struct {
@@ -217,13 +223,19 @@ type OpenAIMessage struct {
 }
 
 type OpenAIContentPart struct {
-	Type     string          `json:"type"`
-	Text     string          `json:"text,omitempty"`
-	ImageURL *OpenAIImageURL `json:"image_url,omitempty"`
+	Type      string           `json:"type"`
+	Text      string           `json:"text,omitempty"`
+	ImageURL  *OpenAIImageURL  `json:"image_url,omitempty"`
+	InputAudio *OpenAIAudioURL `json:"input_audio,omitempty"`
 }
 
 type OpenAIImageURL struct {
 	URL string `json:"url"`
+}
+
+type OpenAIAudioURL struct {
+	Data   string `json:"data"`
+	Format string `json:"format"`
 }
 
 type OpenAIToolCall struct {

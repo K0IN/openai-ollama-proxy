@@ -10,6 +10,7 @@ FROM --platform=${TARGETPLATFORM} scratch
 LABEL maintainer="k0in" \
 	repo="https://github.com/k0in/openai-ollama-proxy" \
 	email="thisk0in@gmail.com"
+COPY proxy.toml /proxy.toml
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=builder --chown=65532:65532 /proxy /proxy
 USER 65532:65532

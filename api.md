@@ -34,15 +34,45 @@ Send a chat completion request in Ollama format.
   "model": "string",
   "messages": [
     {
-      "role": "system" | "user" | "assistant",
-      "content": "string"
+      "role": "system" | "user" | "assistant" | "tool",
+      "content": "string",
+      "images": ["base64-encoded-image..."],
+      "tool_calls": [
+        {
+          "function": {
+            "name": "string",
+            "arguments": {}
+          }
+        }
+      ]
     }
   ],
   "stream": boolean (optional, default: true),
+  "format": "json" | object (optional),
+  "keep_alive": "duration" (optional, e.g. "0s" to unload),
+  "think": boolean (optional),
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "string",
+        "description": "string",
+        "parameters": {}
+      }
+    }
+  ],
   "options": {
     "temperature": number,
     "top_p": number,
-    "num_predict": number
+    "top_k": number,
+    "num_predict": number,
+    "seed": number,
+    "stop": ["string"],
+    "frequency_penalty": number,
+    "presence_penalty": number,
+    "repeat_penalty": number,
+    "num_ctx": number,
+    "min_p": number
   }
 }
 ```
@@ -54,9 +84,11 @@ Send a chat completion request in Ollama format.
   "created_at": "2024-01-01T00:00:00Z",
   "message": {
     "role": "assistant",
-    "content": "string"
+    "content": "string",
+    "thinking": "string (optional reasoning content)"
   },
   "done": true,
+  "done_reason": "stop" | "unload",
   "total_duration": 123456789,
   "load_duration": 12345678,
   "prompt_eval_count": 10,
@@ -82,11 +114,24 @@ Send a text generation request in Ollama format.
 {
   "model": "string",
   "prompt": "string",
+  "system": "string (optional system prompt)",
+  "template": "string (optional)",
+  "context": [int, ...] (optional),
   "stream": boolean (optional),
+  "raw": boolean (optional),
+  "format": "json" (optional),
+  "keep_alive": "duration" (optional),
+  "think": boolean (optional),
+  "images": ["base64-encoded-image..."] (optional),
   "options": {
     "temperature": number,
     "top_p": number,
-    "num_predict": number
+    "num_predict": number,
+    "seed": number,
+    "stop": ["string"],
+    "frequency_penalty": number,
+    "presence_penalty": number,
+    "repeat_penalty": number
   }
 }
 ```
@@ -130,7 +175,10 @@ Generate embeddings for input text.
 **Response:**
 ```json
 {
-  "embedding": [0.1, 0.2, 0.3, ...]
+  "model": "string",
+  "embeddings": [[0.1, 0.2, 0.3, ...]],
+  "total_duration": 12345678,
+  "prompt_eval_count": 4
 }
 ```
 
@@ -463,7 +511,16 @@ Get real-time statistics about the proxy. Returns JSON with lifetime totals, cur
     "tokens_per_sec": 60.7,
     "avg_input_tokens_per_sec": 12.3,
     "avg_output_tokens_per_sec": 36.0,
-    "avg_tokens_per_sec": 48.3
+    "avg_tokens_per_sec": 48.3,
+    "per_model": {
+      "qwen3:latest": {
+        "total_input_tokens": 10000,
+        "total_output_tokens": 50000,
+        "total_tokens": 60000,
+        "total_requests": 30,
+        "output_tokens_per_sec": 40.0
+      }
+    }
   }
 }
 ```
@@ -485,6 +542,7 @@ Get real-time statistics about the proxy. Returns JSON with lifetime totals, cur
 | `avg_input_tokens_per_sec` | float | Average input tokens/sec across the last 10 requests |
 | `avg_output_tokens_per_sec` | float | Average output tokens/sec across the last 10 requests |
 | `avg_tokens_per_sec` | float | Average total tokens/sec across the last 10 requests |
+| `per_model` | object | Per-model breakdown of total tokens and requests (lifetime) |
 
 **Example usage (waybar):**
 ```bash

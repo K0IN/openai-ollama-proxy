@@ -15,9 +15,8 @@ model_context_length = 32768
 # --- Optional settings -------------------------------------------------------
 # proxy_api_key = "sk-your-secret-key"
 # debug = true
-# anthropic_base_url = "https://api.anthropic.com"
-# anthropic_api_key = "sk-ant-..."
 # log_max_body_bytes = 4096
+# stats_store_path = "/var/lib/openai-ollama-proxy/stats.json"
 # upstream_startup_wait = "30s"
 # upstream_retry_interval = "5s"
 # http_request_timeout = "30s"
@@ -41,14 +40,10 @@ upstream = "qwen3:27b"
 local = "qwen3:27b"
 context_length = 32768
 
-[[upstream.models]]
-upstream = "qwen3:14b"
-local = "qwen3:14b"
-context_length = 32768
 
 # --- Multi-upstream example (uncomment to use) -------------------------------
 # [[upstream]]
-# url = "https://api.openai.com/v1"
+# url = "https://api.openai.com"
 # api_key = "sk-..."
 #
 # [[upstream.models]]
@@ -60,4 +55,3 @@ context_length = 32768
 # upstream = "gpt-4o-mini"
 # local = "gpt-4o-mini"
 # context_length = 128000
-

@@ -42,27 +42,39 @@ var modelSizePattern = regexp.MustCompile(`(?i)(?:^|[^0-9a-z])(\d+(?:\.\d+)?)\s*
 // New constructs a Server that uses a single HTTP client for both streaming
 // and short upstream calls. Prefer NewWithClients in production so that
 // streaming completions cannot starve embeddings / health calls.
-func New(cfg config.Config, router *config.RoutingTable, client *http.Client) *Server {
+func New(cfg config.Config, router *config.RoutingTable, client *http.Client, st *stats.Stats) *Server {
 	if client == nil {
 		client = config.NewHTTPClient(cfg)
 	}
+	if st == nil {
+		st = stats.New()
+	}
 
-	return &Server{cfg: cfg, router: router, client: client, requestClient: client, stats: stats.New()}
+	return &Server{cfg: cfg, router: router, client: client, requestClient: client, stats: st}
 }
 
 // NewWithClients constructs a Server backed by separate HTTP clients for
 // streaming completions (streamClient) and short upstream calls
 // (requestClient). Either argument may be nil to fall back to the package
 // defaults.
-func NewWithClients(cfg config.Config, router *config.RoutingTable, streamClient, requestClient *http.Client) *Server {
+func NewWithClients(cfg config.Config, router *config.RoutingTable, streamClient, requestClient *http.Client, st *stats.Stats) *Server {
 	if streamClient == nil {
 		streamClient = config.NewHTTPClient(cfg)
 	}
 	if requestClient == nil {
 		requestClient = config.NewRequestHTTPClient(cfg)
 	}
+	if st == nil {
+		st = stats.New()
+	}
 
-	return &Server{cfg: cfg, router: router, client: streamClient, requestClient: requestClient, stats: stats.New()}
+	return &Server{cfg: cfg, router: router, client: streamClient, requestClient: requestClient, stats: st}
+}
+
+// Stats returns the server's stats collector, for use by callers that need
+// to persist stats (e.g. periodic save to disk).
+func (server *Server) Stats() *stats.Stats {
+	return server.stats
 }
 
 func (server *Server) Routes() http.Handler {

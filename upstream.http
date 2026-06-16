@@ -1,10 +1,11 @@
 ### Upstream OpenAI-compatible API quick tests
 ### Requires VS Code REST Client extension
 ### Talks directly to the upstream OpenAI-compatible endpoints.
+### Adjust @host to point at your upstream (NOT the proxy).
 
-@host = http://host.docker.internal:11434
-@apiKey = localdev
-@model = qwen3:latest
+@host = http://host.docker.internal:8000
+@apiKey = change-me
+@model = Qwen3.6
 
 ### Health check
 GET {{host}}/v1/models HTTP/1.1

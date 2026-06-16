@@ -2,11 +2,13 @@ package logging
 
 import (
 	"bytes"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -27,7 +29,7 @@ func (recorder *statusRecorder) Flush() {
 	}
 }
 
-func Middleware(debug bool, next http.Handler) http.Handler {
+func Middleware(debug bool, maxBodyBytes int, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Never log /stats requests.
 		if r.URL.Path == "/stats" {
@@ -57,11 +59,18 @@ func Middleware(debug bool, next http.Handler) http.Handler {
 				r.Body = io.NopCloser(bytes.NewReader(body))
 				if len(body) > 0 {
 					redacted := RedactJSONForLog(body)
+					var truncated []byte
+					if maxBodyBytes > 0 && len(redacted) > maxBodyBytes {
+						truncated = redacted[:maxBodyBytes]
+						truncated = append(truncated, []byte("\n... (truncated ", strconv.Itoa(len(redacted)-maxBodyBytes), " bytes)")...)
+					} else {
+						truncated = redacted
+					}
 					var indented bytes.Buffer
-					if err := json.Indent(&indented, redacted, "  ", "  "); err == nil {
+					if err := json.Indent(&indented, truncated, "  ", "  "); err == nil {
 						log.Printf(">>> REQUEST BODY (%d bytes):\n  %s", len(body), indented.String())
 					} else {
-						log.Printf(">>> REQUEST BODY (%d bytes): %s", len(body), string(redacted))
+						log.Printf(">>> REQUEST BODY (%d bytes): %s", len(body), string(truncated))
 					}
 				}
 			}
@@ -74,15 +83,44 @@ func Middleware(debug bool, next http.Handler) http.Handler {
 	})
 }
 
-func AuthMiddleware(apikey string, next http.Handler) http.Handler {
+// ExtractAPIKey attempts to read an API key from the request, checking the
+// Authorization: Bearer header first, then falling back to X-API-Key header.
+func ExtractAPIKey(r *http.Request) string {
+	if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
+		return auth[len("Bearer "):]
+	}
+	return r.Header.Get("X-API-Key")
+}
+
+// AuthMiddleware validates the proxy API key using a constant-time comparison.
+//
+// If the configured proxy_api_key is empty (not set or empty string), ALL
+// requests are accepted regardless of what key (if any) is supplied.
+//
+// When proxy_api_key is set, exactly one must match:
+//   - Authorization: Bearer <key>
+//   - X-API-Key: <key>
+//
+// Responses are returned in a format compatible with OpenAI, Anthropic, and
+// Ollama client expectations.
+func AuthMiddleware(proxyAPIKey string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if apikey == "" {
+		// If no API key is configured, accept all requests.
+		if proxyAPIKey == "" {
 			next.ServeHTTP(w, r)
 			return
 		}
 
-		auth := r.Header.Get("Authorization")
-		if !strings.HasPrefix(auth, "Bearer ") || auth[len("Bearer "):] != apikey {
+		supplied := ExtractAPIKey(r)
+		if supplied == "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":{"message":"Missing API key — provide via Authorization: Bearer or X-API-Key header","type":"unauthorized_error"}}`))
+			return
+		}
+
+		// Constant-time comparison to prevent timing side-channel attacks.
+		if subtle.ConstantTimeCompare([]byte(supplied), []byte(proxyAPIKey)) != 1 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
 			_, _ = w.Write([]byte(`{"error":{"message":"Invalid API key","type":"unauthorized_error"}}`))

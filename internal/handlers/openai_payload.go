@@ -70,10 +70,13 @@ func truncateForLog(value string, max int) string {
 }
 
 func normalizeOpenAIMessageMap(message map[string]any) {
-	content, _ := message["content"].(string)
+	content, contentIsString := message["content"].(string)
 	reasoningContent, _ := message["reasoning_content"].(string)
 	reasoning, _ := message["reasoning"].(string)
-	if content == "" {
+	// Only overwrite empty-string content with reasoning when content is a
+	// plain string.  Multi-modal content (images / audio / video) is an array
+	// and must never be replaced by reasoning text.
+	if contentIsString && content == "" {
 		switch {
 		case reasoningContent != "":
 			message["content"] = reasoningContent
