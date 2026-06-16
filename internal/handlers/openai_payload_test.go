@@ -346,11 +346,11 @@ func Test_normalizeOpenAIJSON(t *testing.T) {
 		check func(t *testing.T, result map[string]any)
 	}{
 		{
-			name:  "sets model to config name",
+			name:  "sets model to first upstream model",
 			input: map[string]any{"model": "original"},
 			check: func(t *testing.T, result map[string]any) {
-				if result["model"] != "configured-model" {
-					t.Errorf("model = %v, want configured-model", result["model"])
+				if result["model"] != "qwen3:latest" {
+					t.Errorf("model = %v, want qwen3:latest", result["model"])
 				}
 			},
 		},
@@ -387,7 +387,6 @@ func Test_normalizeOpenAIJSON(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := newTestServer()
-			server.cfg.ModelName = "configured-model"
 
 			body, _ := json.Marshal(tt.input)
 			result, err := server.normalizeOpenAIJSON(body)
@@ -452,7 +451,6 @@ func Test_normalizeOpenAIStreamLine(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := newTestServer()
-			server.cfg.ModelName = "test-model"
 
 			result := server.normalizeOpenAIStreamLine(tt.line)
 			tt.check(t, result)

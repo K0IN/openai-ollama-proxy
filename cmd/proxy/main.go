@@ -65,6 +65,9 @@ func main() {
 		if u.APIKey != "" {
 			apiKeyStatus = "set"
 		}
+		if u.Passthrough {
+			apiKeyStatus = "passthrough"
+		}
 		parsedURL, _ := url.Parse(u.URL)
 		displayURL := u.URL
 		if parsedURL != nil {

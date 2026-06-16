@@ -129,6 +129,29 @@ func TestUpstreamConfigValidate(t *testing.T) {
 			},
 			wantErr: "empty upstream name",
 		},
+		{
+			name: "passthrough valid — no api_key",
+			u: UpstreamConfig{
+				URL:         "http://localhost:8000",
+				Passthrough: true,
+				Models: []ModelMapping{
+					{Upstream: "gpt-4o", Local: "gpt-4o"},
+				},
+			},
+			wantErr: "",
+		},
+		{
+			name: "passthrough with api_key — conflict",
+			u: UpstreamConfig{
+				URL:         "http://localhost:8000",
+				APIKey:      "sk-abc",
+				Passthrough: true,
+				Models: []ModelMapping{
+					{Upstream: "gpt-4o", Local: "gpt-4o"},
+				},
+			},
+			wantErr: "cannot both be set",
+		},
 	}
 
 	for _, tt := range tests {
@@ -228,6 +251,40 @@ func TestBuildRoutingTable(t *testing.T) {
 		_, ok = rt.Lookup("nonexistent")
 		if ok {
 			t.Fatal("nonexistent should not be found")
+		}
+	})
+
+	t.Run("passthrough propagation", func(t *testing.T) {
+		upstreams := []UpstreamConfig{
+			{
+				URL:         "http://localhost:8000",
+				Passthrough: true,
+				Models: []ModelMapping{
+					{Upstream: "m1", Local: "m1"},
+				},
+			},
+		}
+
+		rt, err := BuildRoutingTable(upstreams, 65536)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		entry, ok := rt.Lookup("m1")
+		if !ok {
+			t.Fatal("m1 not found")
+		}
+		if !entry.Passthrough {
+			t.Fatal("Passthrough should be true")
+		}
+		if entry.APIKey != "" {
+			t.Fatalf("APIKey should be empty, got %q", entry.APIKey)
+		}
+
+		// Verify AllUpstreams also carries the flag.
+		all := rt.AllUpstreams()
+		if len(all) != 1 || !all[0].Passthrough {
+			t.Fatal("AllUpstreams passthrough flag not propagated")
 		}
 	})
 

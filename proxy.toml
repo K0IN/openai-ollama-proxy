@@ -31,9 +31,16 @@ model_context_length = 65536
 # [[upstream.models]] entries map the upstream model name to a local alias.
 # The optional `context_length` overrides the global model_context_length.
 
+# Option A: pre-configured api_key for the upstream (used for all requests via this provider)
+# [[upstream]]
+# url = "http://localhost:8000"
+# api_key = "change-me"
+
+# Option B: passthrough — pass the client's API key as-is to the upstream.
+# Each upstream can only use api_key or passthrough, not both.
 [[upstream]]
 url = "http://localhost:8000"
-api_key = "change-me"
+passthrough = true
 
 [[upstream.models]]
 upstream = "Qwen3.6"

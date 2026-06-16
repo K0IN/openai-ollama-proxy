@@ -143,15 +143,15 @@ func TestMultiUpstream_Routing(t *testing.T) {
 		}
 	})
 
-	// Test 3: Unknown model → upstream unavailable since no route found
+	// Test 3: Unknown model → falls back to first upstream
 	t.Run("unknown_model", func(t *testing.T) {
 		body := strings.NewReader(`{"model":"nonexistent","messages":[{"role":"user","content":"Hi"}],"stream":false}`)
 		req := httptest.NewRequest(http.MethodPost, "/api/chat", body)
 		w := httptest.NewRecorder()
 		server.handleChat(w, req)
 
-		if w.Code != http.StatusServiceUnavailable {
-			t.Errorf("status = %d, want 503 for unknown model (no upstream route)", w.Code)
+		if w.Code != http.StatusOK {
+			t.Errorf("status = %d, want 200 (unknown models fall back to first upstream, body=%s)", w.Code, w.Body.String())
 		}
 	})
 }

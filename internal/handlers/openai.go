@@ -59,14 +59,16 @@ func (server *Server) handleOpenAIChat(w http.ResponseWriter, r *http.Request) {
 	var origPayload map[string]any
 	_ = json.Unmarshal(body, &origPayload)
 	reqModel, _ := origPayload["model"].(string)
-	baseURL, apiKey, _, _ := server.resolveRouteForModel(reqModel)
+	baseURL, apiKey, _, _, passthrough := server.resolveRouteForModelPassthrough(reqModel)
 	if baseURL == "" {
 		upstreams := server.router.AllUpstreams()
 		if len(upstreams) > 0 {
 			baseURL = upstreams[0].URL
 			apiKey = upstreams[0].APIKey
+			passthrough = upstreams[0].Passthrough
 		}
 	}
+	apiKey = server.resolveEffectiveAPIKey(apiKey, passthrough, applogging.ExtractAPIKey(r))
 
 	payload, strippedTools, err := server.rewriteRequestForChat(body)
 	if err != nil {
@@ -165,14 +167,16 @@ func (server *Server) handleOpenAIEmbeddings(w http.ResponseWriter, r *http.Requ
 	var payloadMap map[string]any
 	_ = json.Unmarshal(payload, &payloadMap)
 	model, _ := payloadMap["model"].(string)
-	baseURL, apiKey, _, _ := server.resolveRouteForModel(model)
+	baseURL, apiKey, _, _, passthrough := server.resolveRouteForModelPassthrough(model)
 	if baseURL == "" {
 		upstreams := server.router.AllUpstreams()
 		if len(upstreams) > 0 {
 			baseURL = upstreams[0].URL
 			apiKey = upstreams[0].APIKey
+			passthrough = upstreams[0].Passthrough
 		}
 	}
+	apiKey = server.resolveEffectiveAPIKey(apiKey, passthrough, applogging.ExtractAPIKey(r))
 
 	upstream, err := http.NewRequestWithContext(r.Context(), http.MethodPost, baseURL+"/v1/embeddings", bytes.NewReader(payload))
 	if err != nil {

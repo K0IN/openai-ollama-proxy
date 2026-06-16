@@ -137,6 +137,34 @@ func (server *Server) resolveRouteForModel(model string) (baseURL, apiKey, upstr
 	return "", "", "", server.cfg.ModelContextLength
 }
 
+// resolveEffectiveAPIKey returns the API key to use for the upstream request.
+// If the upstream has passthrough enabled, the caller's API key (extracted from
+// the incoming request) is used instead of the configured upstream api_key.
+func (server *Server) resolveEffectiveAPIKey(upstreamAPIKey string, passthrough bool, incomingAPIKey string) string {
+	if passthrough {
+		return incomingAPIKey
+	}
+	return upstreamAPIKey
+}
+
+// resolveRouteForModelPassthrough extends resolveRouteForModel to also return
+// the passthrough flag.
+func (server *Server) resolveRouteForModelPassthrough(model string) (baseURL, apiKey, upstreamModel string, ctxLen int, passthrough bool) {
+	if server.router != nil {
+		if entry, ok := server.router.Lookup(model); ok {
+			return entry.URL, entry.APIKey, entry.UpstreamModel, entry.ContextLength, entry.Passthrough
+		}
+	}
+	if upstreams := server.router.AllUpstreams(); len(upstreams) > 0 {
+		u := upstreams[0]
+		if len(u.Models) > 0 {
+			return u.URL, u.APIKey, u.Models[0].Upstream, server.cfg.ModelContextLength, u.Passthrough
+		}
+		return u.URL, u.APIKey, "", server.cfg.ModelContextLength, u.Passthrough
+	}
+	return "", "", "", server.cfg.ModelContextLength, false
+}
+
 func (server *Server) firstUpstreamModel() string {
 	if server.router != nil {
 		for _, m := range server.router.AllModels() {
@@ -368,34 +396,45 @@ func ollamaModelInfo(metadata modelMetadata) map[string]any {
 }
 
 func (server *Server) probeUpstreamHealth(ctx context.Context) (bool, error) {
-	baseURL := server.firstUpstreamURL()
+	upstreams := server.router.AllUpstreams()
 	// No upstream configured — the proxy is self-sufficient (provides
 	// synthetic /api/tags, /api/version, etc.) and is always healthy.
-	if baseURL == "" {
+	if len(upstreams) == 0 {
 		return true, nil
 	}
 
-	baseURL = strings.TrimRight(baseURL, "/")
+	// Probe all upstreams; return healthy if at least one is reachable.
+	var lastErr error
+	for _, u := range upstreams {
+		baseURL := strings.TrimRight(u.URL, "/")
 
-	healthCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
+		healthCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
 
-	upstream, err := http.NewRequestWithContext(healthCtx, http.MethodGet, baseURL+"/v1/models", nil)
-	if err != nil {
-		return false, err
+		req, err := http.NewRequestWithContext(healthCtx, http.MethodGet, baseURL+"/v1/models", nil)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if u.APIKey != "" {
+			req.Header.Set("Authorization", "Bearer "+u.APIKey)
+		}
+
+		resp, err := server.requestClient.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+
+		if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
+			return true, nil
+		}
+		lastErr = fmt.Errorf("upstream %s returned status %d", u.URL, resp.StatusCode)
 	}
-	if apiKey := server.firstUpstreamAPIKey(); apiKey != "" {
-		upstream.Header.Set("Authorization", "Bearer "+apiKey)
-	}
 
-	resp, err := server.requestClient.Do(upstream)
-	if err != nil {
-		return false, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	_, _ = io.Copy(io.Discard, resp.Body)
-
-	return resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices, nil
+	return false, lastErr
 }
 
 func (server *Server) doUpstreamChatWithRetry(ctx context.Context, payload []byte) (*http.Response, error) {

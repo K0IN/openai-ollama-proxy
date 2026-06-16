@@ -59,7 +59,8 @@ func (server *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Resolve route for the requested model.
-	baseURL, apiKey, upstreamModel, _ := server.resolveRouteForModel(ollamaReq.Model)
+	baseURL, apiKey, upstreamModel, _, passthrough := server.resolveRouteForModelPassthrough(ollamaReq.Model)
+	apiKey = server.resolveEffectiveAPIKey(apiKey, passthrough, applogging.ExtractAPIKey(r))
 	openAIReq.Model = upstreamModel
 
 	openAIBody, err := json.Marshal(openAIReq)
@@ -230,18 +231,20 @@ func (server *Server) handleEmbed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	baseURL, apiKey, upstreamModel, _ := server.resolveRouteForModel(ollamaReq.Model)
+	baseURL, apiKey, upstreamModel, _, passthrough := server.resolveRouteForModelPassthrough(ollamaReq.Model)
 	if baseURL == "" {
 		// Fallback to first upstream if no model match.
 		upstreams := server.router.AllUpstreams()
 		if len(upstreams) > 0 {
 			baseURL = upstreams[0].URL
 			apiKey = upstreams[0].APIKey
+			passthrough = upstreams[0].Passthrough
 			if upstreamModel == "" && len(upstreams[0].Models) > 0 {
 				upstreamModel = upstreams[0].Models[0].Upstream
 			}
 		}
 	}
+	apiKey = server.resolveEffectiveAPIKey(apiKey, passthrough, applogging.ExtractAPIKey(r))
 
 	openAIReq := types.OpenAIEmbedRequest{Model: upstreamModel, Input: ollamaReq.Input}
 	if len(ollamaReq.Input) == 0 && ollamaReq.Prompt != "" {
@@ -318,14 +321,16 @@ func (server *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 		input, _ = json.Marshal(ollamaReq.Prompt)
 	}
 
-	baseURL, apiKey, upstreamModel, _ := server.resolveRouteForModel(ollamaReq.Model)
+	baseURL, apiKey, upstreamModel, _, passthrough := server.resolveRouteForModelPassthrough(ollamaReq.Model)
 	if baseURL == "" {
 		upstreams := server.router.AllUpstreams()
 		if len(upstreams) > 0 {
 			baseURL = upstreams[0].URL
 			apiKey = upstreams[0].APIKey
+			passthrough = upstreams[0].Passthrough
 		}
 	}
+	apiKey = server.resolveEffectiveAPIKey(apiKey, passthrough, applogging.ExtractAPIKey(r))
 
 	openAIReq := types.OpenAIEmbedRequest{Model: upstreamModel, Input: input}
 	openAIBody, err := json.Marshal(openAIReq)

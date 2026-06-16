@@ -50,7 +50,8 @@ func (server *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Req
 	}
 
 	// Resolve route for the requested model.
-	baseURL, apiKey, upstreamModel, _ := server.resolveRouteForModel(anthropicReq.Model)
+	baseURL, apiKey, upstreamModel, _, passthrough := server.resolveRouteForModelPassthrough(anthropicReq.Model)
+	apiKey = server.resolveEffectiveAPIKey(apiKey, passthrough, applogging.ExtractAPIKey(r))
 	openAIReq.Model = upstreamModel
 
 	openAIBody, err := json.Marshal(openAIReq)

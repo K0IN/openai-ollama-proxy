@@ -133,7 +133,12 @@ max_request_bytes = 33554432        # reject inbound JSON bodies larger than thi
 # Upstream definitions
 [[upstream]]
 url = "http://vllm:8000"           # OpenAI-compatible API endpoint
-api_key = "change-me"              # sent as Authorization: Bearer
+
+# Each upstream uses either a static api_key or passthrough (not both).
+# Option A: pre-configured api_key (sent as Authorization: Bearer for all requests)
+api_key = "change-me"
+# Option B: passthrough — forward the client's API key as-is to the upstream
+# passthrough = true
 
 [[upstream.models]]
 upstream = "Qwen3.6"               # model name sent to upstream

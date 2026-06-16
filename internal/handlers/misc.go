@@ -170,6 +170,7 @@ func (server *Server) handleShow(w http.ResponseWriter, r *http.Request) {
 		meta.ContextLength = entry.ContextLength
 		meta.ParentModel = entry.UpstreamModel
 		applyModelNameHints(&meta, req.Model)
+		applyModelNameHints(&meta, entry.UpstreamModel)
 	} else {
 		applyModelNameHints(&meta, req.Model)
 	}

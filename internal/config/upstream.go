@@ -14,14 +14,16 @@ type ModelMapping struct {
 }
 
 type UpstreamConfig struct {
-	URL    string         `toml:"url"`
-	APIKey string         `toml:"api_key"`
-	Models []ModelMapping `toml:"models"`
+	URL         string         `toml:"url"`
+	APIKey      string         `toml:"api_key"`
+	Passthrough bool           `toml:"passthrough"`
+	Models      []ModelMapping `toml:"models"`
 }
 
 type UpstreamEntry struct {
 	URL           string
 	APIKey        string
+	Passthrough   bool
 	UpstreamModel string
 	ContextLength int
 }
@@ -84,6 +86,12 @@ func (u UpstreamConfig) Validate() error {
 	if len(u.Models) == 0 {
 		return fmt.Errorf("upstream %q must define at least one model", u.URL)
 	}
+
+	// api_key and passthrough are mutually exclusive.
+	if u.Passthrough && u.APIKey != "" {
+		return fmt.Errorf("upstream %q: api_key and passthrough cannot both be set", u.URL)
+	}
+
 	for i, m := range u.Models {
 		if err := m.Validate(); err != nil {
 			return fmt.Errorf("upstream %q model[%d]: %w", u.URL, i, err)
@@ -118,6 +126,7 @@ func BuildRoutingTable(upstreams []UpstreamConfig, globalCtxLen int) (*RoutingTa
 			entries[local] = UpstreamEntry{
 				URL:           u.URL,
 				APIKey:        u.APIKey,
+				Passthrough:   u.Passthrough,
 				UpstreamModel: m.Upstream,
 				ContextLength: ctxLen,
 			}

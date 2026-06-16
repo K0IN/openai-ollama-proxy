@@ -15,7 +15,9 @@ max_request_bytes = 33554432
 
 [[upstream]]
 url = "http://vllm:8000"
+# Use either api_key or passthrough, not both.
 api_key = "change-me"
+# passthrough = true
 
 [[upstream.models]]
 upstream = "Qwen3.6"

@@ -59,7 +59,8 @@ func (server *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Resolve route for the requested model.
-	baseURL, apiKey, upstreamModel, _ := server.resolveRouteForModel(ollamaReq.Model)
+	baseURL, apiKey, upstreamModel, _, passthrough := server.resolveRouteForModelPassthrough(ollamaReq.Model)
+	apiKey = server.resolveEffectiveAPIKey(apiKey, passthrough, applogging.ExtractAPIKey(r))
 	openAIReq.Model = upstreamModel
 
 	openAIBody, err := json.Marshal(openAIReq)
