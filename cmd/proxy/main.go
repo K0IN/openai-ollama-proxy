@@ -60,26 +60,20 @@ func main() {
 	}
 
 	log.Printf("openai-ollama-proxy listening on %s", cfg.ListenAddr)
-	if router != nil && len(router.AllUpstreams()) > 0 {
-		for _, u := range router.AllUpstreams() {
-			apiKeyStatus := "not set"
-			if u.APIKey != "" {
-				apiKeyStatus = "set"
-			}
-			parsedURL, _ := url.Parse(u.URL)
-			displayURL := u.URL
-			if parsedURL != nil {
-				displayURL = parsedURL.Host
-			}
-			log.Printf("  provider: %s  (API key: %s)", displayURL, apiKeyStatus)
-			for _, m := range u.Models {
-				log.Printf("    %s -> %s", m.Local, m.Upstream)
-			}
+	for _, u := range router.AllUpstreams() {
+		apiKeyStatus := "not set"
+		if u.APIKey != "" {
+			apiKeyStatus = "set"
 		}
-	} else {
-		log.Printf("  upstream URL:        %s", cfg.UpstreamBaseURL)
-		log.Printf("  upstream model:      %s", cfg.UpstreamModel)
-		log.Printf("  Ollama model:        %s", cfg.ModelName)
+		parsedURL, _ := url.Parse(u.URL)
+		displayURL := u.URL
+		if parsedURL != nil {
+			displayURL = parsedURL.Host
+		}
+		log.Printf("  provider: %s  (API key: %s)", displayURL, apiKeyStatus)
+		for _, m := range u.Models {
+			log.Printf("    %s -> %s", m.Local, m.Upstream)
+		}
 	}
 	log.Printf("  max request bytes:   %d", cfg.MaxRequestBytes)
 	log.Printf("  request timeout:     %s", cfg.HTTPRequestTimeout)

@@ -8,7 +8,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -62,7 +61,7 @@ func Middleware(debug bool, maxBodyBytes int, next http.Handler) http.Handler {
 					var truncated []byte
 					if maxBodyBytes > 0 && len(redacted) > maxBodyBytes {
 						truncated = redacted[:maxBodyBytes]
-						truncated = append(truncated, []byte("\n... (truncated ", strconv.Itoa(len(redacted)-maxBodyBytes), " bytes)")...)
+						truncated = append(truncated, []byte(fmt.Sprintf("\n... (truncated %d bytes)", len(redacted)-maxBodyBytes))...)
 					} else {
 						truncated = redacted
 					}

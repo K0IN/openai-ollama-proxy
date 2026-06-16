@@ -58,17 +58,7 @@ func LoadFile(path string) (Config, *RoutingTable, error) {
 func Load() (Config, *RoutingTable) {
 	path := os.Getenv("CONFIG_FILE")
 	if path == "" {
-		// Fall back to environment-variable-only mode so that users who set
-		// UPSTREAM_BASE_URL / UPSTREAM_MODEL (e.g. docker-compose examples)
-		// do not need a TOML file.
-		cfg := LoadFromEnv()
-		router, err := BuildRoutingTable(cfg.Upstreams, cfg.ModelContextLength)
-		if err != nil {
-			// No [[upstream]] entries in env-only mode — that is fine; the
-			// code falls back to the flat config fields at runtime.
-			return cfg, nil
-		}
-		return cfg, router
+		log.Fatal("CONFIG_FILE is required. Set CONFIG_FILE=/path/to/proxy.toml or mount a config file. See proxy.toml for an example.")
 	}
 
 	cfg, router, err := LoadFile(path)

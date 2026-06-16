@@ -2,7 +2,7 @@
 # =============================================================================
 # This file is baked into the Docker image as /proxy.toml.
 # For Docker deployments, mount your own config and set:
-#   CONFIG_FILE=/etc/proxy/config.toml
+#   CONFIG_FILE=/proxy.toml
 #
 # For standalone / local use:
 #   export CONFIG_FILE=/path/to/proxy.toml
@@ -10,15 +10,15 @@
 
 listen_addr = ":11434"
 ollama_version = "0.6.4"
-model_context_length = 32768
+model_context_length = 65536
 
 # --- Optional settings -------------------------------------------------------
 # proxy_api_key = "sk-your-secret-key"
 # debug = true
 # log_max_body_bytes = 4096
 # stats_store_path = "/var/lib/openai-ollama-proxy/stats.json"
-# upstream_startup_wait = "30s"
-# upstream_retry_interval = "5s"
+# upstream_startup_wait = "30m"
+# upstream_retry_interval = "2s"
 # http_request_timeout = "30s"
 # http_stream_timeout = "5m"
 # shutdown_timeout = "30s"
@@ -31,27 +31,11 @@ model_context_length = 32768
 # [[upstream.models]] entries map the upstream model name to a local alias.
 # The optional `context_length` overrides the global model_context_length.
 
-# Example: single Ollama instance running locally
 [[upstream]]
-url = "http://localhost:11434"
+url = "http://localhost:8000"
+api_key = "change-me"
 
 [[upstream.models]]
-upstream = "qwen3:27b"
-local = "qwen3:27b"
-context_length = 32768
-
-
-# --- Multi-upstream example (uncomment to use) -------------------------------
-# [[upstream]]
-# url = "https://api.openai.com"
-# api_key = "sk-..."
-#
-# [[upstream.models]]
-# upstream = "gpt-4o"
-# local = "gpt-4o"
-# context_length = 128000
-#
-# [[upstream.models]]
-# upstream = "gpt-4o-mini"
-# local = "gpt-4o-mini"
-# context_length = 128000
+upstream = "Qwen3.6"
+local = "qwen3:latest"
+context_length = 65536

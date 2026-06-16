@@ -99,20 +99,9 @@ services:
     ports:
       - "11434:11434"
     environment:
-      - LISTEN_ADDR=:11434
-      - UPSTREAM_BASE_URL=http://headroom:8787
-      - UPSTREAM_API_KEY=${VLLM_API_KEY:-change-me}
-      - UPSTREAM_MODEL=qwen3:latest
-      - MODEL_NAME=qwen3:latest
-      - MODEL_CONTEXT_LENGTH=65536
-      - OLLAMA_VERSION=0.6.4
-      - UPSTREAM_STARTUP_WAIT=30m
-      - UPSTREAM_RETRY_INTERVAL=2s
-      - HTTP_REQUEST_TIMEOUT=30s
-      - HTTP_STREAM_TIMEOUT=5m
-      - SHUTDOWN_TIMEOUT=30s
-      - MAX_REQUEST_BYTES=33554432
-      - DEBUG=false
+      - CONFIG_FILE=/etc/proxy/config.toml
+    volumes:
+      - ./proxy-headroom-qwen3-27b.toml:/etc/proxy/config.toml:ro
 
 volumes:
   headroom-data:

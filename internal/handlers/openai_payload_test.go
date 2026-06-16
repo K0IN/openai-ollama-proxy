@@ -33,7 +33,6 @@ func Test_rewriteRequestModel(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := newTestServer()
-			server.cfg.UpstreamModel = "test-model"
 
 			body, _ := json.Marshal(tt.input)
 			result, err := server.rewriteRequestModel(body)
@@ -86,7 +85,6 @@ func Test_rewriteRequestForChat(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := newTestServer()
-			server.cfg.UpstreamModel = "test-model"
 
 			body, _ := json.Marshal(tt.input)
 			result, changed, err := server.rewriteRequestForChat(body)

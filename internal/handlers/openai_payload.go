@@ -112,7 +112,9 @@ func (server *Server) normalizeOpenAIJSON(payload []byte) ([]byte, error) {
 	}
 
 	if _, ok := value["model"]; ok {
-		value["model"] = server.cfg.ModelName
+		if localModel := server.firstUpstreamModel(); localModel != "" {
+			value["model"] = localModel
+		}
 	}
 
 	delete(value, "prompt_token_ids")

@@ -37,8 +37,8 @@ func TestHandleEmbed_SingleInput(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
 			t.Fatal(err)
 		}
-		if got.Model != server.cfg.UpstreamModel {
-			t.Fatalf("upstream model = %q, want %q", got.Model, server.cfg.UpstreamModel)
+		if got.Model != "test-model" {
+			t.Fatalf("upstream model = %q, want %q", got.Model, "test-model")
 		}
 
 		var input string
@@ -58,9 +58,7 @@ func TestHandleEmbed_SingleInput(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	origURL := server.cfg.UpstreamBaseURL
-	server.cfg.UpstreamBaseURL = upstream.URL
-	defer func() { server.cfg.UpstreamBaseURL = origURL }()
+	server.router = upstreamRouter(upstream.URL, "")
 
 	req := httptest.NewRequest(http.MethodPost, "/api/embed", strings.NewReader(`{"model":"all-minilm","input":"Why is the sky blue?"}`))
 	w := httptest.NewRecorder()
@@ -135,9 +133,7 @@ func TestHandleEmbed_MultipleInput(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	origURL := server.cfg.UpstreamBaseURL
-	server.cfg.UpstreamBaseURL = upstream.URL
-	defer func() { server.cfg.UpstreamBaseURL = origURL }()
+	server.router = upstreamRouter(upstream.URL, "")
 
 	req := httptest.NewRequest(http.MethodPost, "/api/embed", strings.NewReader(`{"model":"all-minilm","input":["Why is the sky blue?","Why is the grass green?"]}`))
 	w := httptest.NewRecorder()
@@ -180,9 +176,7 @@ func TestHandleEmbeddings_DeprecatedEndpoint(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	origURL := server.cfg.UpstreamBaseURL
-	server.cfg.UpstreamBaseURL = upstream.URL
-	defer func() { server.cfg.UpstreamBaseURL = origURL }()
+	server.router = upstreamRouter(upstream.URL, "")
 
 	req := httptest.NewRequest(http.MethodPost, "/api/embeddings", strings.NewReader(`{"model":"all-minilm","prompt":"Here is an article about llamas..."}`))
 	w := httptest.NewRecorder()
@@ -362,8 +356,8 @@ func TestHandleGenerate_NonStream(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
 			t.Fatal(err)
 		}
-		if got.Model != server.cfg.UpstreamModel {
-			t.Fatalf("upstream model = %q, want %q", got.Model, server.cfg.UpstreamModel)
+		if got.Model != "test-model" {
+			t.Fatalf("upstream model = %q, want %q", got.Model, "test-model")
 		}
 		if got.Stream {
 			t.Fatal("upstream stream should be false")
@@ -388,14 +382,7 @@ func TestHandleGenerate_NonStream(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	origURL := server.cfg.UpstreamBaseURL
-	origKey := server.cfg.UpstreamAPIKey
-	server.cfg.UpstreamBaseURL = upstream.URL
-	server.cfg.UpstreamAPIKey = "test-key"
-	defer func() {
-		server.cfg.UpstreamBaseURL = origURL
-		server.cfg.UpstreamAPIKey = origKey
-	}()
+	server.router = upstreamRouter(upstream.URL, "test-key")
 
 	req := httptest.NewRequest(http.MethodPost, "/api/generate", strings.NewReader(`{"model":"qwen3:latest","prompt":"Hi","stream":false}`))
 	w := httptest.NewRecorder()
@@ -467,9 +454,7 @@ func TestHandleGenerate_Stream(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	origURL := server.cfg.UpstreamBaseURL
-	server.cfg.UpstreamBaseURL = upstream.URL
-	defer func() { server.cfg.UpstreamBaseURL = origURL }()
+	server.router = upstreamRouter(upstream.URL, "")
 
 	req := httptest.NewRequest(http.MethodPost, "/api/generate", strings.NewReader(`{"model":"qwen3:latest","prompt":"Hi","stream":true}`))
 	w := httptest.NewRecorder()

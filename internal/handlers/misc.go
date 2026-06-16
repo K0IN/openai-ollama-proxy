@@ -122,35 +122,23 @@ func (server *Server) handleTags(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now().UTC().Format(time.RFC3339)
 
-	if len(models) > 0 {
-		for _, m := range models {
-			entry, _ := server.router.Lookup(m)
-			meta := modelMetadata{
-				ContextLength: entry.ContextLength,
-				Family:        "transformer",
-				Format:        "unknown",
-				ParameterSize: "unknown",
-				Quantization:  "unknown",
-			}
-			applyModelNameHints(&meta, m)
-			resp.Models = append(resp.Models, types.OllamaModelInfo{
-				Name:       m,
-				Model:      m,
-				ModifiedAt: now,
-				Size:       0,
-				Digest:     "sha256:proxy",
-				Details:    toModelDetails(meta),
-			})
+	for _, m := range models {
+		entry, _ := server.router.Lookup(m)
+		meta := modelMetadata{
+			ContextLength: entry.ContextLength,
+			Family:        "transformer",
+			Format:        "unknown",
+			ParameterSize: "unknown",
+			Quantization:  "unknown",
 		}
-	} else {
-		metadata := server.currentModelMetadata(r.Context())
+		applyModelNameHints(&meta, m)
 		resp.Models = append(resp.Models, types.OllamaModelInfo{
-			Name:       server.cfg.ModelName,
-			Model:      server.cfg.ModelName,
+			Name:       m,
+			Model:      m,
 			ModifiedAt: now,
 			Size:       0,
 			Digest:     "sha256:proxy",
-			Details:    toModelDetails(metadata),
+			Details:    toModelDetails(meta),
 		})
 	}
 
@@ -170,20 +158,20 @@ func (server *Server) handleShow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var meta modelMetadata
-	if entry, ok := server.router.Lookup(req.Model); ok {
-		meta = modelMetadata{
-			ContextLength: entry.ContextLength,
-			Family:        "transformer",
-			ParentModel:   entry.UpstreamModel,
-			Format:        "unknown",
-			ParameterSize: "unknown",
-			Quantization:  "unknown",
-		}
+	entry, ok := server.router.Lookup(req.Model)
+	meta := modelMetadata{
+		ContextLength: server.cfg.ModelContextLength,
+		Family:        "transformer",
+		Format:        "unknown",
+		ParameterSize: "unknown",
+		Quantization:  "unknown",
+	}
+	if ok {
+		meta.ContextLength = entry.ContextLength
+		meta.ParentModel = entry.UpstreamModel
 		applyModelNameHints(&meta, req.Model)
 	} else {
-		// Fallback for flat config: probe upstream for metadata.
-		meta = server.currentModelMetadata(r.Context())
+		applyModelNameHints(&meta, req.Model)
 	}
 
 	resp := types.OllamaShowResponse{
@@ -214,35 +202,22 @@ func (server *Server) handlePs(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	expiresAt := now.Add(24 * time.Hour).UTC().Format(time.RFC3339)
 
-	if len(models) > 0 {
-		for _, m := range models {
-			entry, _ := server.router.Lookup(m)
-			meta := modelMetadata{
-				ContextLength: entry.ContextLength,
-				Family:        "transformer",
-				Format:        "unknown",
-				ParameterSize: "unknown",
-				Quantization:  "unknown",
-			}
-			applyModelNameHints(&meta, m)
-			resp.Models = append(resp.Models, types.OllamaPsModel{
-				Name:      m,
-				Model:     m,
-				Size:      0,
-				Digest:    "sha256:proxy",
-				Details:   toModelDetails(meta),
-				ExpiresAt: expiresAt,
-				SizeVRAM:  0,
-			})
+	for _, m := range models {
+		entry, _ := server.router.Lookup(m)
+		meta := modelMetadata{
+			ContextLength: entry.ContextLength,
+			Family:        "transformer",
+			Format:        "unknown",
+			ParameterSize: "unknown",
+			Quantization:  "unknown",
 		}
-	} else {
-		metadata := server.currentModelMetadata(r.Context())
+		applyModelNameHints(&meta, m)
 		resp.Models = append(resp.Models, types.OllamaPsModel{
-			Name:      server.cfg.ModelName,
-			Model:     server.cfg.ModelName,
+			Name:      m,
+			Model:     m,
 			Size:      0,
 			Digest:    "sha256:proxy",
-			Details:   toModelDetails(metadata),
+			Details:   toModelDetails(meta),
 			ExpiresAt: expiresAt,
 			SizeVRAM:  0,
 		})

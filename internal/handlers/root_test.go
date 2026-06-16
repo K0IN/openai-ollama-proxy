@@ -6,6 +6,11 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/k0in/openai-ollama-proxy/internal/config"
+	"github.com/k0in/openai-ollama-proxy/internal/stats"
+	"github.com/k0in/openai-ollama-proxy/internal/types"
 )
 
 func TestHandleRoot_Healthy(t *testing.T) {
@@ -183,8 +188,32 @@ func TestHandleShow(t *testing.T) {
 }
 
 func TestHandleShow_ParameterCountIsNumeric(t *testing.T) {
-	server := newTestServer()
-	server.cfg.UpstreamModel = "Qwen3-35B-FP8"
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(types.OpenAIModelListResponse{
+			Object: "list",
+			Data:   []types.OpenAIModel{{ID: "Qwen3-35B-FP8", Object: "model", OwnedBy: "test", MaxModelLen: 65536}},
+		})
+	}))
+	defer upstream.Close()
+
+	router, _ := config.BuildRoutingTable([]config.UpstreamConfig{
+		{
+			URL: upstream.URL,
+			Models: []config.ModelMapping{
+				{Upstream: "Qwen3-35B-FP8", Local: "qwen3:latest", ContextLength: 65536},
+			},
+		},
+	}, 65536)
+
+	cfg := config.Config{
+		ListenAddr:            ":11434",
+		ModelContextLength:    65536,
+		OllamaVersion:         "0.6.4",
+		UpstreamStartupWait:   0,
+		UpstreamRetryInterval: 10 * time.Millisecond,
+	}
+	server := New(cfg, router, &http.Client{Timeout: 5 * time.Second}, stats.New())
 
 	req := httptest.NewRequest(http.MethodPost, "/api/show", strings.NewReader(`{"model":"qwen3:latest"}`))
 	w := httptest.NewRecorder()

@@ -69,7 +69,6 @@ func TestOpenAIChat_NonStream(t *testing.T) {
 	cfg := config.Config{
 		ListenAddr:            ":11434",
 		ModelContextLength:    128000,
-		ModelName:             "gpt-4o",
 		OllamaVersion:         "0.6.4",
 		UpstreamStartupWait:   0,
 		UpstreamRetryInterval: 10 * time.Millisecond,
@@ -160,7 +159,6 @@ func TestOpenAIChat_Stream(t *testing.T) {
 
 	cfg := config.Config{
 		ListenAddr:            ":11434",
-		ModelName:             "gpt-4o-mini",
 		OllamaVersion:         "0.6.4",
 		UpstreamStartupWait:   0,
 		UpstreamRetryInterval: 10 * time.Millisecond,
@@ -234,7 +232,7 @@ func TestOpenAIModels_List(t *testing.T) {
 		},
 	}, 65536)
 
-	server := New(config.Config{ListenAddr: ":11434", ModelName: "gpt-4o", ModelContextLength: 65536}, router, &http.Client{Timeout: 5 * time.Second}, stats.New())
+	server := New(config.Config{ListenAddr: ":11434", ModelContextLength: 65536}, router, &http.Client{Timeout: 5 * time.Second}, stats.New())
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 	w := httptest.NewRecorder()

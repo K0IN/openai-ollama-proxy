@@ -262,18 +262,15 @@ func TestMultiUpstream_HealthProbe(t *testing.T) {
 		t.Fatalf("BuildRoutingTable: %v", err)
 	}
 
+	// The router includes upstreamA as its first upstream, so probeUpstreamHealth
+	// will probe it.
 	cfg := config.Config{
 		ListenAddr:            ":11434",
 		ModelContextLength:    65536,
 		OllamaVersion:         "0.6.4",
 		UpstreamStartupWait:   0,
 		UpstreamRetryInterval: 10 * time.Millisecond,
-		// Set UpstreamBaseURL so probeUpstreamHealth actually probes one
-		UpstreamBaseURL: upstreamA.URL,
-		UpstreamAPIKey:  "key-a",
 	}
-	// When UpstreamBaseURL is set, probeUpstreamHealth probes the configured
-	// upstream (not the router upstreams). We use upstreamA so the probe hits it.
 	server := NewWithClients(cfg, router, &http.Client{Timeout: 5 * time.Second}, &http.Client{Timeout: 5 * time.Second}, stats.New())
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -369,7 +366,6 @@ func TestMultiUpstream_HealthProbe_AllDown(t *testing.T) {
 		OllamaVersion:         "0.6.4",
 		UpstreamStartupWait:   0,
 		UpstreamRetryInterval: 10 * time.Millisecond,
-		UpstreamBaseURL:       "http://127.0.0.1:1", // dead — triggers probe
 	}
 	server := NewWithClients(cfg, router, &http.Client{Timeout: 500 * time.Millisecond}, &http.Client{Timeout: 500 * time.Millisecond}, stats.New())
 
@@ -426,7 +422,6 @@ func TestMultiUpstream_OpenAIPassthrough(t *testing.T) {
 	cfg := config.Config{
 		ListenAddr:            ":11434",
 		ModelContextLength:    65536,
-		ModelName:             "model-a:latest",
 		OllamaVersion:         "0.6.4",
 		UpstreamStartupWait:   0,
 		UpstreamRetryInterval: 10 * time.Millisecond,

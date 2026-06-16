@@ -21,42 +21,23 @@ func (server *Server) handleOpenAIModels(w http.ResponseWriter, r *http.Request)
 	}
 
 	models := server.router.AllModels()
-	if len(models) > 0 {
-		resp := types.OpenAIModelListResponse{
-			Object: "list",
-			Data:   make([]types.OpenAIModel, 0, len(models)),
-		}
-		for _, m := range models {
-			entry, ok := server.router.Lookup(m)
-			ctxLen := server.cfg.ModelContextLength
-			if ok && entry.ContextLength > 0 {
-				ctxLen = entry.ContextLength
-			}
-			resp.Data = append(resp.Data, types.OpenAIModel{
-				Object:      "model",
-				ID:          m,
-				OwnedBy:     "openai-ollama-proxy",
-				MaxModelLen: ctxLen,
-			})
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(resp)
-		return
-	}
-
-	// Fallback for legacy flat config.
-	metadata := server.currentModelMetadata(r.Context())
 	resp := types.OpenAIModelListResponse{
 		Object: "list",
-		Data: []types.OpenAIModel{{
-			Object:      "model",
-			ID:          server.cfg.ModelName,
-			OwnedBy:     "openai-ollama-proxy",
-			Root:        metadata.ParentModel,
-			MaxModelLen: metadata.ContextLength,
-		}},
+		Data:   make([]types.OpenAIModel, 0, len(models)),
 	}
-
+	for _, m := range models {
+		entry, ok := server.router.Lookup(m)
+		ctxLen := server.cfg.ModelContextLength
+		if ok && entry.ContextLength > 0 {
+			ctxLen = entry.ContextLength
+		}
+		resp.Data = append(resp.Data, types.OpenAIModel{
+			Object:      "model",
+			ID:          m,
+			OwnedBy:     "openai-ollama-proxy",
+			MaxModelLen: ctxLen,
+		})
+	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
 }

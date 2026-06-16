@@ -51,15 +51,10 @@ The proxy exposes Anthropic Messages API-compatible endpoints at `/v1/messages` 
 # Build
 go build -o openai-ollama-proxy ./cmd/proxy
 
-# Run
-UPSTREAM_BASE_URL=http://localhost:8000 UPSTREAM_MODEL=your-model ./openai-ollama-proxy
-```
-
-### Install globally
-
-```bash
-go install github.com/k0in/openai-ollama-proxy@latest
-openai-ollama-proxy
+# Run (edit proxy.toml first with your upstream settings)
+cp proxy.toml my-config.toml
+# ... edit my-config.toml ...
+CONFIG_FILE=./my-config.toml ./openai-ollama-proxy
 ```
 
 ### Docker
@@ -70,14 +65,20 @@ openai-ollama-proxy
 # Pull
 docker pull ghcr.io/k0in/openai-ollama-proxy:latest
 
-# Run
+# Run (mount your own TOML config)
 docker run -p 11434:11434 \
-  -e UPSTREAM_BASE_URL=http://host.docker.internal:8000 \
-  -e UPSTREAM_MODEL=your-model \
+  -v ./my-config.toml:/proxy.toml:ro \
+  -e CONFIG_FILE=/proxy.toml \
   ghcr.io/k0in/openai-ollama-proxy:latest
 ```
 
-### Docker Compose Examples
+### Docker Compose
+
+The [docker-compose.yml](docker-compose.yml) already configures the proxy with `CONFIG_FILE` and mounts `proxy.toml`. Edit `proxy.toml` with your upstream settings, then:
+
+```bash
+docker compose up -d
+```
 
 Pre-configured examples for different models are available in the `examples/` directory:
 
@@ -86,8 +87,6 @@ Pre-configured examples for different models are available in the `examples/` di
 | [examples/docker-compose-qwen3-27b.yml](examples/docker-compose-qwen3-27b.yml) | Qwen3.6-27B (NVFP4) | Smaller, faster, ~27B params |
 | [examples/docker-compose-qwen3-35b.yml](examples/docker-compose-qwen3-35b.yml) | Qwen3.6-35B (AWQ) | Mixture of Experts, ~35B params |
 | [examples/docker-compose-qwen2.5-coder-14b.yml](examples/docker-compose-qwen2.5-coder-14b.yml) | Qwen2.5-Coder-14B (GPTQ Int4) | Coding model, ~14B params |
-
-The examples pull `ghcr.io/k0in/openai-ollama-proxy:latest` by default. Uncomment the local `build:` line in the compose file if you want to build the proxy from this checkout instead.
 
 ```bash
 # Run with Qwen3.6-27B
@@ -100,29 +99,117 @@ docker compose -f examples/docker-compose-qwen3-35b.yml up -d
 docker compose -f examples/docker-compose-qwen2.5-coder-14b.yml up -d
 ```
 
-### Environment variables
+## Configuration
 
-| Variable | Default | Notes |
-|---|---|---|
-| `CONFIG_FILE` | *(empty)* | path to a TOML config file (see [proxy.toml](proxy.toml)); if not set, the proxy runs in env-var-only mode |
-| `LISTEN_ADDR` | `:11434` | host:port the proxy binds to |
-| `UPSTREAM_BASE_URL` | `http://localhost:8000` | upstream OpenAI-compatible API, must be `http(s)://host[:port]` |
-| `UPSTREAM_API_KEY` | *(empty)* | sent as `Authorization: Bearer …`; required when upstream enforces it |
-| `UPSTREAM_MODEL` | `default` | model id presented to the upstream API |
-| `MODEL_NAME` | `generic:latest` | model name presented to Ollama clients |
-| `MODEL_CONTEXT_LENGTH` | `65536` | reported via `/api/show` and `/v1/models` |
-| `OLLAMA_VERSION` | `0.6.4` | reported by `/api/version`, set this to whatever vscode wants |
-| `PROXY_API_KEY` | *(empty)* | require clients to send this via `Authorization: Bearer` or `X-API-Key`; if empty, all requests are accepted |
-| `STATS_STORE_PATH` | *(empty)* | path to persist stats JSON so they survive restarts |
-| `UPSTREAM_STARTUP_WAIT` | `30m` | retry budget while upstream is loading the model |
-| `UPSTREAM_RETRY_INTERVAL` | `2s` | delay between startup retries |
-| `HTTP_REQUEST_TIMEOUT` | `30s` | cap for short upstream calls (embeddings, models, health) |
-| `HTTP_STREAM_TIMEOUT` | `5m` | cap for streaming chat / generate requests |
-| `SHUTDOWN_TIMEOUT` | `30s` | drain budget for in-flight requests on SIGTERM/SIGINT |
-| `MAX_REQUEST_BYTES` | `33554432` | reject inbound JSON bodies larger than this (32 MiB) |
-| `DEBUG` | *(empty)* | `true`/`1` enables request/response dumps with secrets redacted |
+The proxy is configured via a **TOML file** (see [proxy.toml](proxy.toml) for a complete example).
+
+Set the `CONFIG_FILE` environment variable to point to your TOML file:
+
+```bash
+export CONFIG_FILE=/path/to/proxy.toml
+./openai-ollama-proxy
+```
+
+### TOML reference
+
+```toml
+# Core settings
+listen_addr = ":11434"          # host:port the proxy binds to
+ollama_version = "0.6.4"       # reported by /api/version
+model_context_length = 65536   # reported via /api/show and /v1/models
+
+# Optional settings
+proxy_api_key = "sk-..."           # require clients to send this via Authorization: Bearer
+debug = false                       # enable request/response dumps (secrets redacted)
+log_max_body_bytes = 4096           # truncate debug-logged bodies
+stats_store_path = "/tmp/stats.json" # persist stats across restarts
+upstream_startup_wait = "30m"       # retry budget while upstream loads the model
+upstream_retry_interval = "2s"      # delay between startup retries
+http_request_timeout = "30s"        # cap for short upstream calls (embeddings, models, health)
+http_stream_timeout = "5m"          # cap for streaming chat / generate requests
+shutdown_timeout = "30s"            # drain budget for in-flight requests on SIGTERM/SIGINT
+max_request_bytes = 33554432        # reject inbound JSON bodies larger than this (32 MiB)
+
+# Upstream definitions
+[[upstream]]
+url = "http://vllm:8000"           # OpenAI-compatible API endpoint
+api_key = "change-me"              # sent as Authorization: Bearer
+
+[[upstream.models]]
+upstream = "Qwen3.6"               # model name sent to upstream
+local = "qwen3:latest"             # model name presented to Ollama/OpenAI clients
+context_length = 96000              # optional, overrides global model_context_length
+```
+
+### Multiple upstreams
+
+You can define multiple `[[upstream]]` blocks, each with its own models. Requests are routed based on the local model name:
+
+```toml
+[[upstream]]
+url = "http://localhost:8000"
+api_key = "sk-local"
+
+[[upstream.models]]
+upstream = "qwen2.5-coder-14b"
+local = "qwen-coder"
+context_length = 32768
+
+[[upstream.models]]
+upstream = "qwen3-27b-fp8"
+local = "qwen3-large"
+
+[[upstream]]
+url = "https://api.openai.com"
+api_key = "sk-..."
+
+[[upstream.models]]
+upstream = "gpt-4o"
+local = "gpt-4o"
+context_length = 128000
+```
+
+### Environment variable placeholders
+
+Variables in the TOML file are expanded from the environment using `${VAR}` or `${VAR:-default}` syntax. For example:
+
+```toml
+api_key = "${UPSTREAM_API_KEY:-change-me}"
+```
+
+This is useful for keeping secrets out of config files in Docker/CI environments.
+
+### Configuration reference
+
+| TOML key | Default | Equivalent env var | Description |
+|---|---|---|---|
+| `listen_addr` | `:11434` | — | host:port the proxy binds to |
+| `ollama_version` | `0.6.4` | — | reported by `/api/version` |
+| `model_context_length` | `65536` | — | reported via `/api/show` and `/v1/models` |
+| `proxy_api_key` | *(empty)* | — | require clients to authenticate with this key |
+| `debug` | `false` | — | enable request/response debug logging |
+| `log_max_body_bytes` | `4096` | — | truncate debug-logged request bodies to this many bytes |
+| `stats_store_path` | *(empty)* | — | persist stats JSON so they survive restarts |
+| `upstream_startup_wait` | `30m` | — | retry budget while upstream is loading the model |
+| `upstream_retry_interval` | `2s` | — | delay between startup retries |
+| `http_request_timeout` | `30s` | — | cap for short upstream calls (embeddings, models, health) |
+| `http_stream_timeout` | `5m` | — | cap for streaming chat / generate requests |
+| `shutdown_timeout` | `30s` | — | drain budget for in-flight requests on SIGTERM/SIGINT |
+| `max_request_bytes` | `33554432` | — | reject inbound JSON bodies larger than this (32 MiB) |
+| `upstream[].url` | *(required)* | — | upstream OpenAI-compatible API endpoint URL |
+| `upstream[].api_key` | *(empty)* | — | sent as `Authorization: Bearer …` |
+| `upstream[].models[].upstream` | *(required)* | — | model name presented to the upstream API |
+| `upstream[].models[].local` | *(required)* | — | model name presented to Ollama/OpenAI clients |
+| `upstream[].models[].context_length` | *global* | — | overrides `model_context_length` for this model |
 
 ## Quickstart
+
+```bash
+# Edit proxy.toml with your upstream settings, then:
+docker compose up -d
+```
+
+Or use one of the pre-configured examples:
 
 ```bash
 cd examples
@@ -152,8 +239,24 @@ The proxy translates the Anthropic Messages API to OpenAI-compatible requests, s
 
 **Note:** Claude Code requires tool support. Make sure your upstream backend supports OpenAI-format tool calls.
 
+## Multi-modal support (images & audio)
+
+Images and audio are supported through all three API paths:
+
+| Path | Input format |
+|---|---|
+| `/api/chat` (Ollama) | `images` field on Ollama messages — base64-encoded, auto-detected MIME type |
+| `/api/generate` (Ollama) | `images` field on the generate request |
+| `/v1/chat/completions` (OpenAI) | `content` array with `image_url` or `input_audio` parts |
+| `/v1/messages` (Anthropic) | `content` array with `image` blocks (base64 source) |
+
+The proxy:
+- Detects image MIME type from magic bytes (PNG, JPEG, GIF, WebP, AVIF, HEIC, HEIF)
+- Wraps bare base64 data into proper `data:` URLs for OpenAI upstreams
+- Passes `input_audio` parts through unchanged to upstream
+- Preserves multi-modal content arrays through the response normalization pipeline
+
 ## Missing features
 
-* Images (not tested)
-* Other upstream APIs (files, etc) 
+* Other upstream APIs (files, etc)
 * Other upstream services

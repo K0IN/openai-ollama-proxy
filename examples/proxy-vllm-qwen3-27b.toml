@@ -1,21 +1,23 @@
 # Proxy configuration for vLLM + Qwen3.6 27B (NVFP4)
-# Used with: docker-compose.yml
+# Used with: examples/docker-compose-qwen3-27b.yml
 
 listen_addr = ":11434"
 ollama_version = "0.6.4"
 model_context_length = 65536
 
-# How long to wait for upstreams to become healthy on startup.
 upstream_startup_wait = "30m"
-
-# Interval between retry attempts when upstream returns 503.
 upstream_retry_interval = "2s"
+
+http_request_timeout = "30s"
+http_stream_timeout = "5m"
+shutdown_timeout = "30s"
+max_request_bytes = 33554432
 
 [[upstream]]
 url = "http://vllm:8000"
 api_key = "change-me"
 
 [[upstream.models]]
-upstream = "qwen3.6:27b"
-local = "qwen3.6:27b"
-context_length = 111111
+upstream = "Qwen3.6"
+local = "qwen3:latest"
+context_length = 65536

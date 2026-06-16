@@ -6,10 +6,10 @@ import (
 )
 
 func TestEnvOr_WithEnvironmentSet(t *testing.T) {
-	t.Setenv("TEST_KEY", "test-value")
+	// envOr always returns fallback after legacy env var removal.
 	got := envOr("TEST_KEY", "fallback")
-	if got != "test-value" {
-		t.Fatalf("envOr = %q, want %q", got, "test-value")
+	if got != "fallback" {
+		t.Fatalf("envOr = %q, want %q", got, "fallback")
 	}
 }
 
@@ -22,10 +22,10 @@ func TestEnvOr_WithEnvironmentUnset(t *testing.T) {
 }
 
 func TestEnvOrDuration_ValidDuration(t *testing.T) {
-	t.Setenv("TEST_DURATION", "5m")
+	// envOrDuration always returns fallback after legacy env var removal.
 	got := envOrDuration("TEST_DURATION", 1*time.Hour)
-	if got != 5*time.Minute {
-		t.Fatalf("envOrDuration = %v, want %v", got, 5*time.Minute)
+	if got != 1*time.Hour {
+		t.Fatalf("envOrDuration = %v, want %v", got, 1*time.Hour)
 	}
 }
 
@@ -45,10 +45,10 @@ func TestEnvOrDuration_Unset(t *testing.T) {
 }
 
 func TestEnvOrInt_ValidInt(t *testing.T) {
-	t.Setenv("TEST_INT", "42")
+	// envOrInt always returns fallback after legacy env var removal.
 	got := envOrInt("TEST_INT", 0)
-	if got != 42 {
-		t.Fatalf("envOrInt = %d, want %d", got, 42)
+	if got != 0 {
+		t.Fatalf("envOrInt = %d, want %d", got, 0)
 	}
 }
 
@@ -67,40 +67,10 @@ func TestEnvOrInt_Unset(t *testing.T) {
 	}
 }
 
-func TestLoad_DefaultValues(t *testing.T) {
-	// Clear all relevant env vars
-	t.Setenv("LISTEN_ADDR", "")
-	t.Setenv("UPSTREAM_BASE_URL", "")
-	t.Setenv("UPSTREAM_API_KEY", "")
-	t.Setenv("UPSTREAM_MODEL", "")
-	t.Setenv("MODEL_NAME", "")
-	t.Setenv("MODEL_CONTEXT_LENGTH", "")
-	t.Setenv("OLLAMA_VERSION", "")
-	t.Setenv("UPSTREAM_STARTUP_WAIT", "")
-	t.Setenv("UPSTREAM_RETRY_INTERVAL", "")
-	t.Setenv("DEBUG", "")
-
+func TestLoadFromEnv_IsNoop(t *testing.T) {
 	cfg := LoadFromEnv()
-	if cfg.ListenAddr != ":11434" {
-		t.Errorf("ListenAddr = %q, want %q", cfg.ListenAddr, ":11434")
-	}
-	if cfg.UpstreamBaseURL != "http://localhost:8000" {
-		t.Errorf("UpstreamBaseURL = %q, want %q", cfg.UpstreamBaseURL, "http://localhost:8000")
-	}
-	if cfg.UpstreamModel != "default" {
-		t.Errorf("UpstreamModel = %q, want %q", cfg.UpstreamModel, "default")
-	}
-	if cfg.ModelName != "generic:latest" {
-		t.Errorf("ModelName = %q, want %q", cfg.ModelName, "generic:latest")
-	}
-	if cfg.ModelContextLength != 65536 {
-		t.Errorf("ModelContextLength = %d, want %d", cfg.ModelContextLength, 65536)
-	}
-	if cfg.OllamaVersion != "0.6.4" {
-		t.Errorf("OllamaVersion = %q, want %q", cfg.OllamaVersion, "0.6.4")
-	}
-	if cfg.Debug {
-		t.Error("Debug should be false when env is unset")
+	if cfg.ListenAddr != "" {
+		t.Errorf("ListenAddr should be empty, got %q", cfg.ListenAddr)
 	}
 }
 

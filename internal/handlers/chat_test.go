@@ -111,14 +111,7 @@ func TestHandleChat_NonStream(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	origURL := server.cfg.UpstreamBaseURL
-	origKey := server.cfg.UpstreamAPIKey
-	server.cfg.UpstreamBaseURL = upstream.URL
-	server.cfg.UpstreamAPIKey = "test-key"
-	defer func() {
-		server.cfg.UpstreamBaseURL = origURL
-		server.cfg.UpstreamAPIKey = origKey
-	}()
+	server.router = upstreamRouter(upstream.URL, "test-key")
 
 	ollamaReq := `{"model":"qwen3:latest","messages":[{"role":"user","content":"Hi"}],"stream":false}`
 	req := httptest.NewRequest(http.MethodPost, "/api/chat", strings.NewReader(ollamaReq))
@@ -194,9 +187,7 @@ func TestHandleChat_Stream(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	origURL := server.cfg.UpstreamBaseURL
-	server.cfg.UpstreamBaseURL = upstream.URL
-	defer func() { server.cfg.UpstreamBaseURL = origURL }()
+	server.router = upstreamRouter(upstream.URL, "")
 
 	ollamaReq := `{"model":"qwen3:latest","messages":[{"role":"user","content":"Hi"}],"stream":true}`
 	req := httptest.NewRequest(http.MethodPost, "/api/chat", strings.NewReader(ollamaReq))
@@ -301,9 +292,7 @@ func TestHandleChat_Stream_ToolCalls(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	origURL := server.cfg.UpstreamBaseURL
-	server.cfg.UpstreamBaseURL = upstream.URL
-	defer func() { server.cfg.UpstreamBaseURL = origURL }()
+	server.router = upstreamRouter(upstream.URL, "")
 
 	ollamaReq := `{"model":"qwen3:latest","messages":[{"role":"user","content":"Use the tool"}],"stream":true}`
 	req := httptest.NewRequest(http.MethodPost, "/api/chat", strings.NewReader(ollamaReq))

@@ -237,6 +237,9 @@ func (server *Server) handleEmbed(w http.ResponseWriter, r *http.Request) {
 		if len(upstreams) > 0 {
 			baseURL = upstreams[0].URL
 			apiKey = upstreams[0].APIKey
+			if upstreamModel == "" && len(upstreams[0].Models) > 0 {
+				upstreamModel = upstreams[0].Models[0].Upstream
+			}
 		}
 	}
 

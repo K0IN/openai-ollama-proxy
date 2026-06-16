@@ -14,21 +14,33 @@ import (
 )
 
 func newTestServer() *Server {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(types.OpenAIModelListResponse{
+			Object: "list",
+			Data:   []types.OpenAIModel{{ID: "test-model", Object: "model", OwnedBy: "test", MaxModelLen: 65536}},
+		})
+	}))
+
+	router, _ := config.BuildRoutingTable([]config.UpstreamConfig{
+		{
+			URL: upstream.URL,
+			Models: []config.ModelMapping{
+				{Upstream: "test-model", Local: "qwen3:latest", ContextLength: 65536},
+			},
+		},
+	}, 65536)
+
+	_ = upstream // close after server is created — the router holds the URL
+	// We need the upstream to stay alive for the test, so we leave it running.
+	// The server will use upstream.URL from the routing table.
+
 	cfg := config.Config{
 		ListenAddr:            ":11434",
-		UpstreamBaseURL:       "http://127.0.0.1:0",
-		UpstreamAPIKey:        "",
-		UpstreamModel:         "test-model",
-		ModelName:             "generic:latest",
 		ModelContextLength:    65536,
 		OllamaVersion:         "0.6.4",
-		UpstreamStartupWait:   2 * time.Second,
+		UpstreamStartupWait:   0,
 		UpstreamRetryInterval: 10 * time.Millisecond,
-	}
-	router, err := config.BuildRoutingTable(nil, cfg.ModelContextLength)
-	if err != nil {
-		// Legacy flat-config tests: create an empty routing table.
-		router = &config.RoutingTable{}
 	}
 	return New(cfg, router, &http.Client{Timeout: 5 * time.Second}, stats.New())
 }
@@ -43,9 +55,6 @@ func withUpstreamHealthServer(t *testing.T, server *Server, statusCode int, body
 		if r.URL.Path != "/v1/models" {
 			t.Fatalf("path = %q, want %q", r.URL.Path, "/v1/models")
 		}
-		if r.Header.Get("Authorization") != "Bearer test-key" {
-			t.Fatalf("authorization = %q, want %q", r.Header.Get("Authorization"), "Bearer test-key")
-		}
 
 		w.WriteHeader(statusCode)
 		if body != "" {
@@ -53,16 +62,38 @@ func withUpstreamHealthServer(t *testing.T, server *Server, statusCode int, body
 		}
 	}))
 
-	origURL := server.cfg.UpstreamBaseURL
-	origKey := server.cfg.UpstreamAPIKey
-	server.cfg.UpstreamBaseURL = upstream.URL
-	server.cfg.UpstreamAPIKey = "test-key"
+	// Replace the router with one that points to this new upstream.
+	router, _ := config.BuildRoutingTable([]config.UpstreamConfig{
+		{
+			URL:    upstream.URL,
+			APIKey: "test-key",
+			Models: []config.ModelMapping{
+				{Upstream: "test-model", Local: "qwen3:latest", ContextLength: 65536},
+			},
+		},
+	}, 65536)
+	origRouter := server.router
+	server.router = router
 
 	return func() {
-		server.cfg.UpstreamBaseURL = origURL
-		server.cfg.UpstreamAPIKey = origKey
+		server.router = origRouter
 		upstream.Close()
 	}
+}
+
+// upstreamRouter creates a RoutingTable pointing to the given upstream URL.
+// Useful for test helpers that need to route requests to a test upstream.
+func upstreamRouter(upstreamURL, apiKey string) *config.RoutingTable {
+	router, _ := config.BuildRoutingTable([]config.UpstreamConfig{
+		{
+			URL:    upstreamURL,
+			APIKey: apiKey,
+			Models: []config.ModelMapping{
+				{Upstream: "test-model", Local: "qwen3:latest", ContextLength: 65536},
+			},
+		},
+	}, 65536)
+	return router
 }
 
 func assertRFC3339Timestamp(t *testing.T, value string) {

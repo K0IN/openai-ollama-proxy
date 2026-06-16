@@ -119,34 +119,80 @@ func (server *Server) Routes() http.Handler {
 }
 
 // resolveRouteForModel maps a user-facing model name to the upstream
-// connection details.  For multi-upstream ([[upstream]]) configs it
-// consults the RoutingTable; for legacy flat config it falls back to
-// cfg.UpstreamBaseURL / UpstreamModel / UpstreamAPIKey.
+// connection details via the RoutingTable.
 func (server *Server) resolveRouteForModel(model string) (baseURL, apiKey, upstreamModel string, ctxLen int) {
-	// Prefer the routing table when available.
 	if server.router != nil {
 		if entry, ok := server.router.Lookup(model); ok {
 			return entry.URL, entry.APIKey, entry.UpstreamModel, entry.ContextLength
 		}
 	}
-	// Fallback to the flat config.
-	return server.cfg.UpstreamBaseURL, server.cfg.UpstreamAPIKey, server.cfg.UpstreamModel, server.cfg.ModelContextLength
+	// If model is not in the routing table, return defaults from the first upstream.
+	if upstreams := server.router.AllUpstreams(); len(upstreams) > 0 {
+		u := upstreams[0]
+		if len(u.Models) > 0 {
+			return u.URL, u.APIKey, u.Models[0].Upstream, server.cfg.ModelContextLength
+		}
+		return u.URL, u.APIKey, "", server.cfg.ModelContextLength
+	}
+	return "", "", "", server.cfg.ModelContextLength
+}
+
+func (server *Server) firstUpstreamModel() string {
+	if server.router != nil {
+		for _, m := range server.router.AllModels() {
+			return m
+		}
+	}
+	return ""
+}
+
+func (server *Server) firstUpstreamModelName() string {
+	if server.router != nil {
+		if entry, ok := server.router.Lookup(server.firstUpstreamModel()); ok {
+			return entry.UpstreamModel
+		}
+	}
+	return ""
+}
+
+func (server *Server) firstUpstreamURL() string {
+	if server.router != nil {
+		for _, u := range server.router.AllUpstreams() {
+			if u.URL != "" {
+				return u.URL
+			}
+		}
+	}
+	return ""
+}
+
+func (server *Server) firstUpstreamAPIKey() string {
+	if server.router != nil {
+		for _, u := range server.router.AllUpstreams() {
+			if u.APIKey != "" {
+				return u.APIKey
+			}
+		}
+	}
+	return ""
 }
 
 func (server *Server) currentModelMetadata(ctx context.Context) modelMetadata {
 	metadata := server.fallbackModelMetadata()
 
-	baseURL := server.cfg.UpstreamBaseURL
+	baseURL := server.firstUpstreamURL()
 	if baseURL == "" {
 		return metadata
 	}
+
+	upstreamModel := server.firstUpstreamModelName()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/v1/models", nil)
 	if err != nil {
 		return metadata
 	}
-	if server.cfg.UpstreamAPIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+server.cfg.UpstreamAPIKey)
+	if apiKey := server.firstUpstreamAPIKey(); apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
 	}
 
 	resp, err := server.requestClient.Do(req)
@@ -165,7 +211,7 @@ func (server *Server) currentModelMetadata(ctx context.Context) modelMetadata {
 	}
 
 	for _, model := range list.Data {
-		if model.ID != server.cfg.UpstreamModel && model.Root != server.cfg.UpstreamModel {
+		if model.ID != upstreamModel && model.Root != upstreamModel {
 			continue
 		}
 		if model.MaxModelLen > 0 {
@@ -184,15 +230,16 @@ func (server *Server) currentModelMetadata(ctx context.Context) modelMetadata {
 }
 
 func (server *Server) fallbackModelMetadata() modelMetadata {
+	upstreamModel := server.firstUpstreamModelName()
 	metadata := modelMetadata{
 		ContextLength: server.cfg.ModelContextLength,
 		Family:        "transformer",
-		ParentModel:   server.cfg.UpstreamModel,
+		ParentModel:   upstreamModel,
 		Format:        "unknown",
 		ParameterSize: "unknown",
 		Quantization:  "unknown",
 	}
-	applyModelNameHints(&metadata, server.cfg.UpstreamModel)
+	applyModelNameHints(&metadata, upstreamModel)
 	return metadata
 }
 
@@ -321,12 +368,14 @@ func ollamaModelInfo(metadata modelMetadata) map[string]any {
 }
 
 func (server *Server) probeUpstreamHealth(ctx context.Context) (bool, error) {
-	baseURL := strings.TrimRight(server.cfg.UpstreamBaseURL, "/")
+	baseURL := server.firstUpstreamURL()
 	// No upstream configured — the proxy is self-sufficient (provides
 	// synthetic /api/tags, /api/version, etc.) and is always healthy.
 	if baseURL == "" {
 		return true, nil
 	}
+
+	baseURL = strings.TrimRight(baseURL, "/")
 
 	healthCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
@@ -335,8 +384,8 @@ func (server *Server) probeUpstreamHealth(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if server.cfg.UpstreamAPIKey != "" {
-		upstream.Header.Set("Authorization", "Bearer "+server.cfg.UpstreamAPIKey)
+	if apiKey := server.firstUpstreamAPIKey(); apiKey != "" {
+		upstream.Header.Set("Authorization", "Bearer "+apiKey)
 	}
 
 	resp, err := server.requestClient.Do(upstream)
@@ -350,7 +399,9 @@ func (server *Server) probeUpstreamHealth(ctx context.Context) (bool, error) {
 }
 
 func (server *Server) doUpstreamChatWithRetry(ctx context.Context, payload []byte) (*http.Response, error) {
-	return server.doUpstreamChatWithRetryForRoute(ctx, payload, server.cfg.UpstreamBaseURL, server.cfg.UpstreamAPIKey)
+	baseURL := server.firstUpstreamURL()
+	apiKey := server.firstUpstreamAPIKey()
+	return server.doUpstreamChatWithRetryForRoute(ctx, payload, baseURL, apiKey)
 }
 
 func (server *Server) doUpstreamChatWithRetryForRoute(ctx context.Context, payload []byte, baseURL, apiKey string) (*http.Response, error) {

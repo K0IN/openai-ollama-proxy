@@ -84,7 +84,7 @@ func (server *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Req
 
 	responseModel := anthropicReq.Model
 	if responseModel == "" {
-		responseModel = server.cfg.ModelName
+		responseModel = server.firstUpstreamModel()
 	}
 
 	timings := newObservedTimings()
