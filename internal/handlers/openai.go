@@ -28,14 +28,22 @@ func (server *Server) handleOpenAIModels(w http.ResponseWriter, r *http.Request)
 	for _, m := range models {
 		entry, ok := server.router.Lookup(m)
 		ctxLen := server.cfg.ModelContextLength
-		if ok && entry.ContextLength > 0 {
-			ctxLen = entry.ContextLength
+		supportsVision := false
+		supportsThinking := false
+		if ok {
+			if entry.ContextLength > 0 {
+				ctxLen = entry.ContextLength
+			}
+			supportsVision = entry.SupportsVision
+			supportsThinking = entry.SupportsThinking
 		}
 		resp.Data = append(resp.Data, types.OpenAIModel{
-			Object:      "model",
-			ID:          m,
-			OwnedBy:     "openai-ollama-proxy",
-			MaxModelLen: ctxLen,
+			Object:           "model",
+			ID:               m,
+			OwnedBy:          "openai-ollama-proxy",
+			MaxModelLen:      ctxLen,
+			SupportsVision:   supportsVision,
+			SupportsThinking: supportsThinking,
 		})
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -59,14 +67,10 @@ func (server *Server) handleOpenAIChat(w http.ResponseWriter, r *http.Request) {
 	var origPayload map[string]any
 	_ = json.Unmarshal(body, &origPayload)
 	reqModel, _ := origPayload["model"].(string)
-	baseURL, apiKey, _, _, passthrough := server.resolveRouteForModelPassthrough(reqModel)
-	if baseURL == "" {
-		upstreams := server.router.AllUpstreams()
-		if len(upstreams) > 0 {
-			baseURL = upstreams[0].URL
-			apiKey = upstreams[0].APIKey
-			passthrough = upstreams[0].Passthrough
-		}
+	baseURL, apiKey, _, _, passthrough, found := server.resolveRouteForModelPassthrough(reqModel)
+	if !found {
+		http.Error(w, fmt.Sprintf("model not configured: %q", reqModel), http.StatusNotFound)
+		return
 	}
 	apiKey = server.resolveEffectiveAPIKey(apiKey, passthrough, applogging.ExtractAPIKey(r))
 
@@ -82,12 +86,12 @@ func (server *Server) handleOpenAIChat(w http.ResponseWriter, r *http.Request) {
 		if strippedTools {
 			log.Printf("openai chat request normalized | tools stripped for direct-response compatibility")
 		}
-		log.Printf(">>> UPSTREAM (openai passthrough) POST %s/v1/chat/completions (%d bytes):\n  %s", baseURL, len(payload), string(applogging.RedactJSONForLog(payload)))
+		log.Printf(">>> UPSTREAM (openai passthrough) POST %s/v1/chat/completions (%d bytes)", baseURL, len(payload))
 	}
 
 	timings := newObservedTimings()
 
-	resp, err := server.doUpstreamChatWithRetryForRoute(r.Context(), payload, baseURL, apiKey)
+	resp, err := server.doUpstreamChatWithRetryForRoute(r.Context(), payload, baseURL, apiKey, server.shouldRetryOnError(reqModel))
 	if err != nil {
 		log.Printf("upstream openai-chat error: %v | %s", err, reqSummary)
 		http.Error(w, "upstream not ready: "+err.Error(), http.StatusServiceUnavailable)
@@ -101,8 +105,8 @@ func (server *Server) handleOpenAIChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		errBody, _ := io.ReadAll(resp.Body)
-		log.Printf("upstream openai-chat error %d: %s | %s | sent: %s", resp.StatusCode, string(errBody), reqSummary, string(applogging.RedactJSONForLog(payload)))
+		_, _ = io.ReadAll(resp.Body)
+		log.Printf("upstream openai-chat error %d | %s | sent: %d bytes", resp.StatusCode, reqSummary, len(payload))
 		http.Error(w, fmt.Sprintf("upstream error: %d", resp.StatusCode), resp.StatusCode)
 		return
 	}
@@ -114,7 +118,7 @@ func (server *Server) handleOpenAIChat(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if server.cfg.Debug {
-			log.Printf("<<< UPSTREAM (openai passthrough) non-stream body (%d bytes): %s", len(respBody), string(respBody))
+			log.Printf("<<< UPSTREAM (openai passthrough) non-stream body (%d bytes)", len(respBody))
 		}
 
 		normalized, err := server.normalizeOpenAIJSON(respBody)
@@ -124,7 +128,7 @@ func (server *Server) handleOpenAIChat(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if server.cfg.Debug {
-			log.Printf("<<< RESPONSE (openai passthrough) normalized: %s", string(normalized))
+			log.Printf("<<< RESPONSE (openai passthrough) normalized: %d bytes", len(normalized))
 		}
 
 		timings.markComplete()
@@ -132,6 +136,9 @@ func (server *Server) handleOpenAIChat(w http.ResponseWriter, r *http.Request) {
 		var openAIResp types.OpenAIChatResponse
 		if err := json.Unmarshal(normalized, &openAIResp); err == nil && openAIResp.Usage != nil {
 			server.stats.Record(openAIResp.Model, openAIResp.Usage.PromptTokens, openAIResp.Usage.CompletionTokens, time.Duration(timings.evalDuration()))
+			if server.cfg.Debug && openAIResp.Usage.CompletionTokensDetails != nil {
+				log.Printf("<<< UPSTREAM (openai passthrough) reasoning_tokens=%d", openAIResp.Usage.CompletionTokensDetails.ReasoningTokens)
+			}
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -158,25 +165,22 @@ func (server *Server) handleOpenAIEmbeddings(w http.ResponseWriter, r *http.Requ
 	}
 	defer func() { _ = r.Body.Close() }()
 
+	// Extract the model name from the original request before rewriting.
+	var origPayload map[string]any
+	_ = json.Unmarshal(body, &origPayload)
+	model, _ := origPayload["model"].(string)
+	baseURL, apiKey, _, _, passthrough, found := server.resolveRouteForModelPassthrough(model)
+	if !found {
+		http.Error(w, fmt.Sprintf("model not configured: %q", model), http.StatusNotFound)
+		return
+	}
+	apiKey = server.resolveEffectiveAPIKey(apiKey, passthrough, applogging.ExtractAPIKey(r))
+
 	payload, err := server.rewriteRequestModel(body)
 	if err != nil {
 		http.Error(w, "invalid json: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-
-	var payloadMap map[string]any
-	_ = json.Unmarshal(payload, &payloadMap)
-	model, _ := payloadMap["model"].(string)
-	baseURL, apiKey, _, _, passthrough := server.resolveRouteForModelPassthrough(model)
-	if baseURL == "" {
-		upstreams := server.router.AllUpstreams()
-		if len(upstreams) > 0 {
-			baseURL = upstreams[0].URL
-			apiKey = upstreams[0].APIKey
-			passthrough = upstreams[0].Passthrough
-		}
-	}
-	apiKey = server.resolveEffectiveAPIKey(apiKey, passthrough, applogging.ExtractAPIKey(r))
 
 	upstream, err := http.NewRequestWithContext(r.Context(), http.MethodPost, baseURL+"/v1/embeddings", bytes.NewReader(payload))
 	if err != nil {

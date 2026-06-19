@@ -50,7 +50,11 @@ func (server *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Req
 	}
 
 	// Resolve route for the requested model.
-	baseURL, apiKey, upstreamModel, _, passthrough := server.resolveRouteForModelPassthrough(anthropicReq.Model)
+	baseURL, apiKey, upstreamModel, _, passthrough, found := server.resolveRouteForModelPassthrough(anthropicReq.Model)
+	if !found {
+		writeAnthropicError(w, http.StatusNotFound, "invalid_request_error", fmt.Sprintf("model not configured: %q", anthropicReq.Model))
+		return
+	}
 	apiKey = server.resolveEffectiveAPIKey(apiKey, passthrough, applogging.ExtractAPIKey(r))
 	openAIReq.Model = upstreamModel
 
@@ -61,10 +65,10 @@ func (server *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Req
 	}
 
 	if server.cfg.Debug {
-		log.Printf(">>> UPSTREAM (anthropic->openai) POST %s/v1/chat/completions (%d bytes):\n  %s", baseURL, len(openAIBody), string(applogging.RedactJSONForLog(openAIBody)))
+		log.Printf(">>> UPSTREAM (anthropic->openai) POST %s/v1/chat/completions (%d bytes)", baseURL, len(openAIBody))
 	}
 
-	resp, err := server.doUpstreamChatWithRetryForRoute(r.Context(), openAIBody, baseURL, apiKey)
+	resp, err := server.doUpstreamChatWithRetryForRoute(r.Context(), openAIBody, baseURL, apiKey, server.shouldRetryOnError(anthropicReq.Model))
 	if err != nil {
 		log.Printf("anthropic upstream error: %v", err)
 		writeAnthropicError(w, http.StatusServiceUnavailable, "api_error", "upstream not ready: "+err.Error())
@@ -77,8 +81,8 @@ func (server *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Req
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		errBody, _ := io.ReadAll(resp.Body)
-		log.Printf("anthropic upstream error %d: %s | sent: %s", resp.StatusCode, string(errBody), string(applogging.RedactJSONForLog(openAIBody)))
+		_, _ = io.ReadAll(resp.Body)
+		log.Printf("anthropic upstream error %d | sent: %d bytes", resp.StatusCode, len(openAIBody))
 		writeAnthropicError(w, http.StatusBadGateway, "upstream_error", fmt.Sprintf("upstream error: %d", resp.StatusCode))
 		return
 	}
@@ -115,7 +119,7 @@ func (server *Server) handleAnthropicNonStream(w http.ResponseWriter, body io.Re
 	timings.markComplete()
 
 	if server.cfg.Debug {
-		log.Printf("<<< UPSTREAM (anthropic) non-stream body (%d bytes): %s", len(respBody), string(respBody))
+		log.Printf("<<< UPSTREAM (anthropic) non-stream body (%d bytes)", len(respBody))
 	}
 
 	anthropicResp := convertOpenAIToAnthropic(openAIResp, model)
@@ -168,7 +172,7 @@ func (server *Server) handleAnthropicStream(w http.ResponseWriter, body io.Reade
 
 		var chunk types.OpenAIChatResponse
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			log.Printf("anthropic stream decode error: %v, data: %s", err, data)
+			log.Printf("anthropic stream decode error: %v", err)
 			continue
 		}
 

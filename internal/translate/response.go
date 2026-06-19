@@ -82,11 +82,7 @@ func OpenAIRespMsgToOllama(message *types.OpenAIRespMsg) types.OllamaMessage {
 		reasoning = *message.Reasoning
 	}
 	if reasoning != "" {
-		if out.Content == "" {
-			out.Content = reasoning
-		} else {
-			out.Thinking = reasoning
-		}
+		out.Thinking = reasoning
 	}
 
 	if len(message.ToolCalls) > 0 {

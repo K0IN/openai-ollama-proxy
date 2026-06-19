@@ -29,7 +29,7 @@ func main() {
 
 	server := handlers.NewWithClients(cfg, router, config.NewHTTPClient(cfg), config.NewRequestHTTPClient(cfg), st)
 
-	handler := applogging.MaxBytes(cfg.MaxRequestBytes, applogging.Middleware(cfg.Debug, cfg.LogMaxBodyBytes, applogging.AuthMiddleware(cfg.ProxyAPIKey, server.Routes())))
+	handler := applogging.MaxBytes(cfg.MaxRequestBytes, applogging.Middleware(cfg.Debug, applogging.AuthMiddleware(cfg.ProxyAPIKey, server.Routes())))
 
 	httpServer := &http.Server{
 		Addr:              cfg.ListenAddr,

@@ -50,7 +50,7 @@ Send a chat completion request in Ollama format.
   "stream": boolean (optional, default: true),
   "format": "json" | object (optional),
   "keep_alive": "duration" (optional, e.g. "0s" to unload),
-  "think": boolean (optional),
+  "think": boolean | "low" | "medium" | "high" (optional),
   "tools": [
     {
       "type": "function",
@@ -121,7 +121,7 @@ Send a text generation request in Ollama format.
   "raw": boolean (optional),
   "format": "json" (optional),
   "keep_alive": "duration" (optional),
-  "think": boolean (optional),
+  "think": boolean | "low" | "medium" | "high" (optional),
   "images": ["base64-encoded-image..."] (optional),
   "options": {
     "temperature": number,
@@ -301,11 +301,32 @@ List available models (OpenAI format).
       "id": "string",
       "owned_by": "openai-ollama-proxy",
       "root": "string",
-      "max_model_len": 4096
+      "max_model_len": 4096,
+      "supports_vision": true
     }
   ]
 }
 ```
+
+> **Note:** The `supports_vision` field is `true` when the upstream model mapping
+> has `supports_vision = true` in the TOML config. GitHub Copilot and other
+> clients use this to determine whether image inputs are allowed.
+
+> **Thinking / Reasoning:** The Ollama `/api/show` response includes a `"thinking"`
+> capability when the model has a non-empty `supports_thinking = ["..."]` list in the TOML config.
+> The `think` parameter on `/api/chat` and `/api/generate` accepts both:
+> - **boolean**: `true` enables reasoning (mapped to `reasoning_effort: "high"`),
+>   `false` disables it.
+> - **string**: `"low"`, `"medium"`, `"high"` — directly forwarded as `reasoning_effort`.
+>
+> Model aliases are generated automatically from `supports_thinking` values and
+> auto-inject `reasoning_effort` when no explicit `think` is provided. Example:
+> ```toml
+> [[upstream.models]]
+> upstream = "gpt-5.4"
+> local = "gpt-5.4"
+> supports_thinking = ["low", "medium", "high"]
+> ```
 
 ---
 

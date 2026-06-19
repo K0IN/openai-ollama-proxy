@@ -66,7 +66,7 @@ func TestOllamaChatToOpenAI_MapsToolsOptionsAndThinking(t *testing.T) {
 	frequencyPenalty := 0.2
 	presencePenalty := 0.3
 	repeatPenalty := 1.1
-	think := true
+	think := types.ThinkValue{IsSet: true, Bool: true}
 	tools := json.RawMessage(`[{"type":"function","function":{"name":"get_weather"}}]`)
 
 	req := types.OllamaChatRequest{
@@ -254,7 +254,7 @@ func TestConvertMessagesToOpenAI_ToolCalls(t *testing.T) {
 
 func TestOllamaGenerateToOpenAI_MapsSystemImagesFormatAndThinking(t *testing.T) {
 	stream := false
-	think := true
+	think := types.ThinkValue{IsSet: true, Bool: true}
 	req := types.OllamaGenerateRequest{
 		Model:  "qwen3:latest",
 		Prompt: "What is in this picture?",
@@ -533,5 +533,328 @@ func TestOpenAIEmbedToOllama(t *testing.T) {
 	}
 	if got.PromptEvalCount != 5 {
 		t.Errorf("PromptEvalCount = %d, want 5", got.PromptEvalCount)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ThinkValue JSON marshal/unmarshal tests
+// ---------------------------------------------------------------------------
+
+func TestThinkValue_MarshalBoolTrue(t *testing.T) {
+	tv := types.ThinkValue{IsSet: true, Bool: true}
+	data, err := json.Marshal(tv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "true" {
+		t.Errorf("Marshal = %s, want true", data)
+	}
+}
+
+func TestThinkValue_MarshalBoolFalse(t *testing.T) {
+	tv := types.ThinkValue{IsSet: true, Bool: false}
+	data, err := json.Marshal(tv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "false" {
+		t.Errorf("Marshal = %s, want false", data)
+	}
+}
+
+func TestThinkValue_MarshalStringLevel(t *testing.T) {
+	for _, level := range []string{"low", "medium", "high"} {
+		tv := types.ThinkValue{IsSet: true, Level: level}
+		data, err := json.Marshal(tv)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := `"` + level + `"`
+		if string(data) != want {
+			t.Errorf("Marshal(%q) = %s, want %s", level, data, want)
+		}
+	}
+}
+
+func TestThinkValue_MarshalNotSet(t *testing.T) {
+	tv := types.ThinkValue{}
+	data, err := json.Marshal(tv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "null" {
+		t.Errorf("Marshal = %s, want null", data)
+	}
+}
+
+func TestThinkValue_UnmarshalBoolTrue(t *testing.T) {
+	var tv types.ThinkValue
+	if err := json.Unmarshal([]byte("true"), &tv); err != nil {
+		t.Fatal(err)
+	}
+	if !tv.IsSet {
+		t.Error("IsSet should be true")
+	}
+	if !tv.IsTrue() {
+		t.Error("IsTrue() should be true")
+	}
+	if tv.IsStringLevel() {
+		t.Error("IsStringLevel() should be false for bool")
+	}
+}
+
+func TestThinkValue_UnmarshalBoolFalse(t *testing.T) {
+	var tv types.ThinkValue
+	if err := json.Unmarshal([]byte("false"), &tv); err != nil {
+		t.Fatal(err)
+	}
+	if !tv.IsSet {
+		t.Error("IsSet should be true")
+	}
+	if !tv.IsFalse() {
+		t.Error("IsFalse() should be true")
+	}
+}
+
+func TestThinkValue_UnmarshalStringLevel(t *testing.T) {
+	for _, level := range []string{"low", "medium", "high"} {
+		var tv types.ThinkValue
+		if err := json.Unmarshal([]byte(`"`+level+`"`), &tv); err != nil {
+			t.Fatalf("Unmarshal(%q): %v", level, err)
+		}
+		if !tv.IsSet {
+			t.Errorf("IsSet should be true for %q", level)
+		}
+		if !tv.IsStringLevel() {
+			t.Errorf("IsStringLevel() should be true for %q", level)
+		}
+		if tv.IsBool() {
+			t.Errorf("IsBool() should be false for %q", level)
+		}
+		if tv.StringLevel() != level {
+			t.Errorf("StringLevel() = %q, want %q", tv.StringLevel(), level)
+		}
+	}
+}
+
+func TestThinkValue_UnmarshalInvalidType(t *testing.T) {
+	var tv types.ThinkValue
+	err := json.Unmarshal([]byte("123"), &tv)
+	if err == nil {
+		t.Error("expected error for number, got nil")
+	}
+}
+
+func TestThinkValue_Roundtrip(t *testing.T) {
+	tests := []struct {
+		name string
+		tv   types.ThinkValue
+		want string
+	}{
+		{"bool true", types.ThinkValue{IsSet: true, Bool: true}, "true"},
+		{"bool false", types.ThinkValue{IsSet: true, Bool: false}, "false"},
+		{"level low", types.ThinkValue{IsSet: true, Level: "low"}, `"low"`},
+		{"level medium", types.ThinkValue{IsSet: true, Level: "medium"}, `"medium"`},
+		{"level high", types.ThinkValue{IsSet: true, Level: "high"}, `"high"`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data, err := json.Marshal(tt.tv)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var back types.ThinkValue
+			if err := json.Unmarshal(data, &back); err != nil {
+				t.Fatal(err)
+			}
+			if back.IsSet != tt.tv.IsSet {
+				t.Errorf("IsSet = %v, want %v", back.IsSet, tt.tv.IsSet)
+			}
+			if back.Bool != tt.tv.Bool {
+				t.Errorf("Bool = %v, want %v", back.Bool, tt.tv.Bool)
+			}
+			if back.Level != tt.tv.Level {
+				t.Errorf("Level = %q, want %q", back.Level, tt.tv.Level)
+			}
+		})
+	}
+}
+
+func TestThinkValue_EmbeddedInChatRequest(t *testing.T) {
+	// Verify that ThinkValue is correctly serialized inside OllamaChatRequest.
+	tests := []struct {
+		name  string
+		think *types.ThinkValue
+		check func(t *testing.T, raw map[string]any)
+	}{
+		{
+			name:  "bool true",
+			think: &types.ThinkValue{IsSet: true, Bool: true},
+			check: func(t *testing.T, raw map[string]any) {
+				if v, ok := raw["think"].(bool); !ok || !v {
+					t.Errorf("think = %#v, want true", raw["think"])
+				}
+			},
+		},
+		{
+			name:  "string high",
+			think: &types.ThinkValue{IsSet: true, Level: "high"},
+			check: func(t *testing.T, raw map[string]any) {
+				if v, ok := raw["think"].(string); !ok || v != "high" {
+					t.Errorf("think = %#v, want 'high'", raw["think"])
+				}
+			},
+		},
+		{
+			name:  "not set (nil pointer)",
+			think: nil,
+			check: func(t *testing.T, raw map[string]any) {
+				if _, ok := raw["think"]; ok {
+					t.Errorf("think should be omitted when nil, got %#v", raw["think"])
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := types.OllamaChatRequest{
+				Model:    "test",
+				Messages: []types.OllamaMessage{{Role: "user", Content: "Hi"}},
+				Think:    tt.think,
+			}
+			data, err := json.Marshal(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var raw map[string]any
+			if err := json.Unmarshal(data, &raw); err != nil {
+				t.Fatal(err)
+			}
+			tt.check(t, raw)
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// applyThinkingPreference tests for bool + string levels
+// ---------------------------------------------------------------------------
+
+func TestApplyThinkingPreference_BoolTrue(t *testing.T) {
+	think := types.ThinkValue{IsSet: true, Bool: true}
+	req := types.OllamaChatRequest{
+		Model:    "qwen3:latest",
+		Messages: []types.OllamaMessage{{Role: "user", Content: "Hi"}},
+		Think:    &think,
+	}
+	out, err := OllamaChatToOpenAI(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// bool true → reasoning_effort = "high"
+	if out.ReasoningEffort == nil || *out.ReasoningEffort != "high" {
+		t.Errorf("ReasoningEffort = %#v, want 'high'", out.ReasoningEffort)
+	}
+	// bool true → enable_thinking = true
+	if enabled, ok := out.ChatTemplateKwargs["enable_thinking"].(bool); !ok || !enabled {
+		t.Errorf("enable_thinking = %#v, want true", out.ChatTemplateKwargs["enable_thinking"])
+	}
+}
+
+func TestApplyThinkingPreference_BoolFalse(t *testing.T) {
+	think := types.ThinkValue{IsSet: true, Bool: false}
+	req := types.OllamaChatRequest{
+		Model:    "qwen3:latest",
+		Messages: []types.OllamaMessage{{Role: "user", Content: "Hi"}},
+		Think:    &think,
+	}
+	out, err := OllamaChatToOpenAI(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// bool false → no reasoning_effort
+	if out.ReasoningEffort != nil {
+		t.Errorf("ReasoningEffort = %#v, want nil when think=false", out.ReasoningEffort)
+	}
+	// bool false → enable_thinking = false
+	if enabled, ok := out.ChatTemplateKwargs["enable_thinking"].(bool); !ok || enabled {
+		t.Errorf("enable_thinking = %#v, want false", out.ChatTemplateKwargs["enable_thinking"])
+	}
+}
+
+func TestApplyThinkingPreference_StringLow(t *testing.T) {
+	think := types.ThinkValue{IsSet: true, Level: "low"}
+	req := types.OllamaChatRequest{
+		Model:    "gpt-oss",
+		Messages: []types.OllamaMessage{{Role: "user", Content: "Hi"}},
+		Think:    &think,
+	}
+	out, err := OllamaChatToOpenAI(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if out.ReasoningEffort == nil || *out.ReasoningEffort != "low" {
+		t.Errorf("ReasoningEffort = %#v, want 'low'", out.ReasoningEffort)
+	}
+	// string level → no enable_thinking in kwargs
+	if _, ok := out.ChatTemplateKwargs["enable_thinking"]; ok {
+		t.Errorf("enable_thinking should not be set for string level")
+	}
+}
+
+func TestApplyThinkingPreference_StringMedium(t *testing.T) {
+	think := types.ThinkValue{IsSet: true, Level: "medium"}
+	req := types.OllamaChatRequest{
+		Model:    "gpt-oss",
+		Messages: []types.OllamaMessage{{Role: "user", Content: "Hi"}},
+		Think:    &think,
+	}
+	out, err := OllamaChatToOpenAI(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if out.ReasoningEffort == nil || *out.ReasoningEffort != "medium" {
+		t.Errorf("ReasoningEffort = %#v, want 'medium'", out.ReasoningEffort)
+	}
+}
+
+func TestApplyThinkingPreference_StringHigh(t *testing.T) {
+	think := types.ThinkValue{IsSet: true, Level: "high"}
+	req := types.OllamaChatRequest{
+		Model:    "gpt-oss",
+		Messages: []types.OllamaMessage{{Role: "user", Content: "Hi"}},
+		Think:    &think,
+	}
+	out, err := OllamaChatToOpenAI(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if out.ReasoningEffort == nil || *out.ReasoningEffort != "high" {
+		t.Errorf("ReasoningEffort = %#v, want 'high'", out.ReasoningEffort)
+	}
+}
+
+func TestApplyThinkingPreference_NotSet(t *testing.T) {
+	req := types.OllamaChatRequest{
+		Model:    "qwen3:latest",
+		Messages: []types.OllamaMessage{{Role: "user", Content: "Hi"}},
+		// Think is nil
+	}
+	out, err := OllamaChatToOpenAI(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if out.ReasoningEffort != nil {
+		t.Errorf("ReasoningEffort = %#v, want nil when think not set", out.ReasoningEffort)
+	}
+	if _, ok := out.ChatTemplateKwargs["enable_thinking"]; ok {
+		t.Errorf("enable_thinking should not be set when think not set")
 	}
 }

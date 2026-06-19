@@ -118,22 +118,15 @@ func (server *Server) Routes() http.Handler {
 }
 
 // resolveRouteForModel maps a user-facing model name to the upstream
-// connection details via the RoutingTable.
-func (server *Server) resolveRouteForModel(model string) (baseURL, apiKey, upstreamModel string, ctxLen int) {
+// connection details via the RoutingTable. The found return value indicates
+// whether the model was found in the routing table.
+func (server *Server) resolveRouteForModel(model string) (baseURL, apiKey, upstreamModel string, ctxLen int, found bool) {
 	if server.router != nil {
 		if entry, ok := server.router.Lookup(model); ok {
-			return entry.URL, entry.APIKey, entry.UpstreamModel, entry.ContextLength
+			return entry.URL, entry.APIKey, entry.UpstreamModel, entry.ContextLength, true
 		}
 	}
-	// If model is not in the routing table, return defaults from the first upstream.
-	if upstreams := server.router.AllUpstreams(); len(upstreams) > 0 {
-		u := upstreams[0]
-		if len(u.Models) > 0 {
-			return u.URL, u.APIKey, u.Models[0].Upstream, server.cfg.ModelContextLength
-		}
-		return u.URL, u.APIKey, "", server.cfg.ModelContextLength
-	}
-	return "", "", "", server.cfg.ModelContextLength
+	return "", "", "", server.cfg.ModelContextLength, false
 }
 
 // resolveEffectiveAPIKey returns the API key to use for the upstream request.
@@ -146,22 +139,28 @@ func (server *Server) resolveEffectiveAPIKey(upstreamAPIKey string, passthrough 
 	return upstreamAPIKey
 }
 
-// resolveRouteForModelPassthrough extends resolveRouteForModel to also return
-// the passthrough flag.
-func (server *Server) resolveRouteForModelPassthrough(model string) (baseURL, apiKey, upstreamModel string, ctxLen int, passthrough bool) {
+func (server *Server) shouldRetryOnError(model string) bool {
 	if server.router != nil {
 		if entry, ok := server.router.Lookup(model); ok {
-			return entry.URL, entry.APIKey, entry.UpstreamModel, entry.ContextLength, entry.Passthrough
+			return entry.RetryOnError
 		}
 	}
 	if upstreams := server.router.AllUpstreams(); len(upstreams) > 0 {
-		u := upstreams[0]
-		if len(u.Models) > 0 {
-			return u.URL, u.APIKey, u.Models[0].Upstream, server.cfg.ModelContextLength, u.Passthrough
-		}
-		return u.URL, u.APIKey, "", server.cfg.ModelContextLength, u.Passthrough
+		return upstreams[0].RetryOnError
 	}
-	return "", "", "", server.cfg.ModelContextLength, false
+	return false
+}
+
+// resolveRouteForModelPassthrough extends resolveRouteForModel to also return
+// the passthrough flag. The found return value indicates whether the model
+// was found in the routing table.
+func (server *Server) resolveRouteForModelPassthrough(model string) (baseURL, apiKey, upstreamModel string, ctxLen int, passthrough bool, found bool) {
+	if server.router != nil {
+		if entry, ok := server.router.Lookup(model); ok {
+			return entry.URL, entry.APIKey, entry.UpstreamModel, entry.ContextLength, entry.Passthrough, true
+		}
+	}
+	return "", "", "", server.cfg.ModelContextLength, false, false
 }
 
 func (server *Server) firstUpstreamModel() string {
@@ -339,13 +338,32 @@ func (server *Server) probeUpstreamHealth(ctx context.Context) (bool, error) {
 	return false, lastErr
 }
 
-func (server *Server) doUpstreamChatWithRetryForRoute(ctx context.Context, payload []byte, baseURL, apiKey string) (*http.Response, error) {
+var retryErrorBackoffSchedule = []time.Duration{
+	1 * time.Second,
+	2 * time.Second,
+	4 * time.Second,
+	8 * time.Second,
+	16 * time.Second,
+	32 * time.Second,
+	64 * time.Second,
+}
+
+// shouldRetryStatus returns true when the HTTP status code is a transient
+// error that can be retried: 429 (rate limit), 5xx (server error), or
+// 403 (forbidden — some providers use 403 for rate-limiting / temporary
+// access-denied scenarios).
+func shouldRetryStatus(code int) bool {
+	return code == http.StatusTooManyRequests || code == http.StatusForbidden || code >= http.StatusInternalServerError
+}
+
+func (server *Server) doUpstreamChatWithRetryForRoute(ctx context.Context, payload []byte, baseURL, apiKey string, retryOnError bool) (*http.Response, error) {
 	deadline := time.Now().Add(server.cfg.UpstreamStartupWait)
 	if server.cfg.UpstreamRetryInterval <= 0 {
 		server.cfg.UpstreamRetryInterval = 2 * time.Second
 	}
 
 	var lastErr error
+	retryErrorAttempts := 0
 
 	for {
 		upstream, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/v1/chat/completions", bytes.NewReader(payload))
@@ -359,6 +377,26 @@ func (server *Server) doUpstreamChatWithRetryForRoute(ctx context.Context, paylo
 
 		resp, err := server.client.Do(upstream)
 		if err == nil {
+			if shouldRetryStatus(resp.StatusCode) && retryOnError {
+				if retryErrorAttempts >= len(retryErrorBackoffSchedule) {
+					return resp, nil
+				}
+
+				_, _ = io.Copy(io.Discard, resp.Body)
+				_ = resp.Body.Close()
+				lastErr = fmt.Errorf("upstream returned %d", resp.StatusCode)
+
+				delay := retryErrorBackoffSchedule[retryErrorAttempts]
+				retryErrorAttempts++
+
+				select {
+				case <-ctx.Done():
+					return nil, errors.New("request canceled")
+				case <-time.After(delay):
+				}
+
+				continue
+			}
 			if resp.StatusCode != http.StatusServiceUnavailable {
 				return resp, nil
 			}

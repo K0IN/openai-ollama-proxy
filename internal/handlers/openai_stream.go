@@ -3,6 +3,7 @@ package handlers
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -61,8 +62,8 @@ func (server *Server) proxyOpenAIStream(w http.ResponseWriter, resp *http.Respon
 			firstChunkLatency = time.Since(streamStart)
 			loggedFirstChunk = true
 			if server.cfg.Debug {
-				log.Printf("openai chat first chunk after %s | canFlush=%t content-type=%q | %s | line=%s",
-					firstChunkLatency.Round(time.Millisecond), canFlush, resp.Header.Get("Content-Type"), reqSummary, truncateForLog(string(line), 200))
+				log.Printf("openai chat first chunk after %s | canFlush=%t content-type=%q | %s",
+					firstChunkLatency.Round(time.Millisecond), canFlush, resp.Header.Get("Content-Type"), reqSummary)
 			}
 		}
 		if _, err := w.Write(line); err != nil {
@@ -89,6 +90,11 @@ func (server *Server) proxyOpenAIStream(w http.ResponseWriter, resp *http.Respon
 		server.stats.Record(lastChunkWithUsage.Model, lastChunkWithUsage.Usage.PromptTokens, lastChunkWithUsage.Usage.CompletionTokens, time.Duration(timings.evalDuration()))
 	}
 
-	log.Printf("openai chat stream complete in %s firstChunk=%s chunks=%d bytes=%d canFlush=%t content-type=%q | %s",
-		time.Since(streamStart).Round(time.Millisecond), firstChunkLatency.Round(time.Millisecond), chunkCount, byteCount, canFlush, resp.Header.Get("Content-Type"), reqSummary)
+	var reasoningTokensStr string
+	if lastChunkWithUsage.Usage != nil && lastChunkWithUsage.Usage.CompletionTokensDetails != nil {
+		reasoningTokensStr = fmt.Sprintf(" reasoning_tokens=%d", lastChunkWithUsage.Usage.CompletionTokensDetails.ReasoningTokens)
+	}
+
+	log.Printf("openai chat stream complete in %s firstChunk=%s chunks=%d bytes=%d canFlush=%t content-type=%q%s | %s",
+		time.Since(streamStart).Round(time.Millisecond), firstChunkLatency.Round(time.Millisecond), chunkCount, byteCount, canFlush, resp.Header.Get("Content-Type"), reasoningTokensStr, reqSummary)
 }

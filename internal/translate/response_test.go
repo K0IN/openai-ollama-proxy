@@ -343,8 +343,11 @@ func TestOpenAIRespMsgToOllama_ReasoningOnly(t *testing.T) {
 	}
 
 	got := OpenAIRespMsgToOllama(msg)
-	if got.Content != "thinking process" {
-		t.Errorf("Content = %q, want %q", got.Content, "thinking process")
+	if got.Content != "" {
+		t.Errorf("Content = %q, want empty (reasoning belongs in Thinking, not Content)", got.Content)
+	}
+	if got.Thinking != "thinking process" {
+		t.Errorf("Thinking = %q, want %q", got.Thinking, "thinking process")
 	}
 }
 

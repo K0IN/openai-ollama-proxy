@@ -59,9 +59,21 @@ func (server *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Resolve route for the requested model.
-	baseURL, apiKey, upstreamModel, _, passthrough := server.resolveRouteForModelPassthrough(ollamaReq.Model)
+	baseURL, apiKey, upstreamModel, _, passthrough, found := server.resolveRouteForModelPassthrough(ollamaReq.Model)
+	if !found {
+		http.Error(w, fmt.Sprintf("model not configured: %q", ollamaReq.Model), http.StatusNotFound)
+		return
+	}
 	apiKey = server.resolveEffectiveAPIKey(apiKey, passthrough, applogging.ExtractAPIKey(r))
 	openAIReq.Model = upstreamModel
+
+	// Inject model-level thinking level if no explicit think was set by client.
+	if ollamaReq.Think == nil {
+		if entry, ok := server.router.Lookup(ollamaReq.Model); ok && entry.ThinkingLevel != "" {
+			level := entry.ThinkingLevel
+			openAIReq.ReasoningEffort = &level
+		}
+	}
 
 	openAIBody, err := json.Marshal(openAIReq)
 	if err != nil {
@@ -70,12 +82,12 @@ func (server *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if server.cfg.Debug {
-		log.Printf(">>> UPSTREAM POST %s/v1/chat/completions (%d bytes, model=%q):\n  %s", baseURL, len(openAIBody), upstreamModel, string(applogging.RedactJSONForLog(openAIBody)))
+		log.Printf(">>> UPSTREAM POST %s/v1/chat/completions (%d bytes, model=%q)", baseURL, len(openAIBody), upstreamModel)
 	}
 
 	timings := newObservedTimings()
 
-	resp, err := server.doUpstreamChatWithRetryForRoute(r.Context(), openAIBody, baseURL, apiKey)
+	resp, err := server.doUpstreamChatWithRetryForRoute(r.Context(), openAIBody, baseURL, apiKey, server.shouldRetryOnError(ollamaReq.Model))
 	if err != nil {
 		log.Printf("upstream chat error: %v", err)
 		http.Error(w, "upstream not ready: "+err.Error(), http.StatusServiceUnavailable)
@@ -89,8 +101,8 @@ func (server *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	timings.markResponseStart()
 
 	if resp.StatusCode != http.StatusOK {
-		errBody, _ := io.ReadAll(resp.Body)
-		log.Printf("upstream chat error %d: %s | sent: %s", resp.StatusCode, string(errBody), string(applogging.RedactJSONForLog(openAIBody)))
+		_, _ = io.ReadAll(resp.Body)
+		log.Printf("upstream chat error %d | sent: %d bytes", resp.StatusCode, len(openAIBody))
 		http.Error(w, fmt.Sprintf("upstream error: %d", resp.StatusCode), resp.StatusCode)
 		return
 	}
@@ -115,7 +127,7 @@ func (server *Server) handleChatNonStream(w http.ResponseWriter, body io.Reader,
 		return
 	}
 	if server.cfg.Debug {
-		log.Printf("<<< UPSTREAM BODY (non-stream, %d bytes): %s", len(rawBody), string(rawBody))
+		log.Printf("<<< UPSTREAM BODY (non-stream, %d bytes)", len(rawBody))
 	}
 
 	var openAIResp types.OpenAIChatResponse
@@ -127,15 +139,13 @@ func (server *Server) handleChatNonStream(w http.ResponseWriter, body io.Reader,
 
 	if openAIResp.Usage != nil {
 		server.stats.Record(model, openAIResp.Usage.PromptTokens, openAIResp.Usage.CompletionTokens, time.Duration(timings.evalDuration()))
+		if server.cfg.Debug && openAIResp.Usage.CompletionTokensDetails != nil {
+			log.Printf("<<< UPSTREAM reasoning_tokens=%d", openAIResp.Usage.CompletionTokensDetails.ReasoningTokens)
+		}
 	}
 
 	ollamaResp := translate.OpenAIChatToOllama(openAIResp, model)
 	applyObservedChatTimings(&ollamaResp, timings)
-
-	if server.cfg.Debug {
-		out, _ := json.Marshal(ollamaResp)
-		log.Printf("<<< OLLAMA RESPONSE: %s", string(out))
-	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(ollamaResp)
@@ -161,36 +171,33 @@ func (server *Server) handleChatStream(w http.ResponseWriter, body io.Reader, mo
 	sentFinal := false
 	chunkIndex := 0
 	var toolCallStates []streaming.ToolCallState
+	var lastReasoningTokens int
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		if server.cfg.Debug {
-			log.Printf("  STREAM RAW LINE [%d]: %s", chunkIndex, line)
-		}
 		if line == "" || !strings.HasPrefix(line, "data: ") {
 			continue
 		}
 
 		data := strings.TrimPrefix(line, "data: ")
 		if data == "[DONE]" {
-			if server.cfg.Debug {
-				log.Printf("  STREAM [DONE] received")
-			}
 			break
 		}
 
 		var chunk types.OpenAIChatResponse
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			log.Printf("stream decode error: %v, data: %s", err, data)
+			log.Printf("stream decode error: %v", err)
 			continue
+		}
+
+		// Track reasoning_tokens from usage-bearing chunks (usually the final chunk).
+		if chunk.Usage != nil && chunk.Usage.CompletionTokensDetails != nil {
+			lastReasoningTokens = chunk.Usage.CompletionTokensDetails.ReasoningTokens
 		}
 
 		toolCallDeltas := chunkToolCalls(chunk)
 		if len(toolCallDeltas) > 0 {
 			toolCallStates = streaming.AppendToolCalls(toolCallStates, toolCallDeltas)
-			if server.cfg.Debug {
-				log.Printf("  STREAM TOOL CALL DELTA [%d]: parts=%d accumulated=%d", chunkIndex, len(toolCallDeltas), len(toolCallStates))
-			}
 			chunkIndex++
 			continue
 		}
@@ -204,9 +211,6 @@ func (server *Server) handleChatStream(w http.ResponseWriter, body io.Reader, mo
 				if err != nil {
 					log.Printf("stream tool-call encode error: %v", err)
 				} else {
-					if server.cfg.Debug {
-						log.Printf("  STREAM EMIT TOOL [%d]: %s", chunkIndex, string(out))
-					}
 					_, _ = w.Write(out)
 					_, _ = w.Write([]byte("\n"))
 					flusher.Flush()
@@ -217,21 +221,8 @@ func (server *Server) handleChatStream(w http.ResponseWriter, body io.Reader, mo
 
 		ollamaChunk := translate.OpenAIStreamChunkToOllama(chunk, model)
 
-		if server.cfg.Debug {
-			ollamaOut, _ := json.Marshal(ollamaChunk)
-			isEmpty := isEmptyStreamChunk(ollamaChunk)
-			noUsage := respChunkHasNoUsage(chunk)
-			log.Printf("  STREAM CHUNK [%d]: done=%t doneReason=%q empty=%t noUsage=%t content=%q thinking=%q toolCalls=%d -> %s",
-				chunkIndex, ollamaChunk.Done, ollamaChunk.DoneReason, isEmpty, noUsage,
-				ollamaChunk.Message.Content, ollamaChunk.Message.Thinking, len(ollamaChunk.Message.ToolCalls),
-				string(ollamaOut))
-		}
-
 		if ollamaChunk.DoneReason != "" && isEmptyStreamChunk(ollamaChunk) && respChunkHasNoUsage(chunk) {
 			pendingDoneReason = ollamaChunk.DoneReason
-			if server.cfg.Debug {
-				log.Printf("  STREAM CHUNK [%d]: deferred done_reason=%q", chunkIndex, pendingDoneReason)
-			}
 			chunkIndex++
 			continue
 		}
@@ -239,9 +230,6 @@ func (server *Server) handleChatStream(w http.ResponseWriter, body io.Reader, mo
 			ollamaChunk.DoneReason = pendingDoneReason
 		}
 		if isEmptyStreamChunk(ollamaChunk) && !ollamaChunk.Done {
-			if server.cfg.Debug {
-				log.Printf("  STREAM CHUNK [%d]: skipped (empty, not done)", chunkIndex)
-			}
 			chunkIndex++
 			continue
 		}
@@ -262,9 +250,6 @@ func (server *Server) handleChatStream(w http.ResponseWriter, body io.Reader, mo
 			chunkIndex++
 			continue
 		}
-		if server.cfg.Debug {
-			log.Printf("  STREAM EMIT  [%d]: %s", chunkIndex, string(out))
-		}
 		_, _ = w.Write(out)
 		_, _ = w.Write([]byte("\n"))
 		flusher.Flush()
@@ -273,6 +258,10 @@ func (server *Server) handleChatStream(w http.ResponseWriter, body io.Reader, mo
 
 	if err := scanner.Err(); err != nil {
 		log.Printf("stream scanner error: %v", err)
+	}
+
+	if server.cfg.Debug && lastReasoningTokens > 0 {
+		log.Printf("<<< UPSTREAM reasoning_tokens=%d", lastReasoningTokens)
 	}
 
 	if !sentFinal {

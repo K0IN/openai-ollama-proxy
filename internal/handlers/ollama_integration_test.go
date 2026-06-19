@@ -742,9 +742,12 @@ func TestOllamaChat_NonStreamWithReasoning(t *testing.T) {
 
 	var resp types.OllamaChatResponse
 	_ = json.Unmarshal(w.Body.Bytes(), &resp)
-	// When content is empty but reasoning exists, content gets the reasoning
-	if resp.Message.Content != "I need to think about this carefully..." {
-		t.Errorf("content = %q, want reasoning content", resp.Message.Content)
+	// Reasoning always goes into Thinking, never Content.
+	if resp.Message.Thinking != "I need to think about this carefully..." {
+		t.Errorf("thinking = %q, want reasoning content", resp.Message.Thinking)
+	}
+	if resp.Message.Content != "" {
+		t.Errorf("content = %q, want empty (reasoning belongs in Thinking)", resp.Message.Content)
 	}
 }
 
@@ -803,8 +806,7 @@ func TestOllamaChat_Stream_WithThinking(t *testing.T) {
 		}
 	}
 	if !foundThinking {
-		// The reasoning_content might be mapped to content when no other content is present
-		t.Log("no thinking field found — reasoning may have been mapped to content")
+		t.Error("thinking field not found — reasoning should always go into Thinking, not Content")
 	}
 }
 

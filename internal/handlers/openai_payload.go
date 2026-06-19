@@ -14,7 +14,10 @@ func (server *Server) rewriteRequestModel(body []byte) ([]byte, error) {
 	}
 	// Resolve route based on the requested model.
 	model, _ := payload["model"].(string)
-	_, _, upstreamModel, _ := server.resolveRouteForModel(model)
+	_, _, upstreamModel, _, found := server.resolveRouteForModel(model)
+	if !found {
+		return nil, fmt.Errorf("model not configured: %q", model)
+	}
 	payload["model"] = upstreamModel
 	return json.Marshal(payload)
 }
@@ -26,7 +29,10 @@ func (server *Server) rewriteRequestForChat(body []byte) ([]byte, bool, error) {
 	}
 	// Resolve route based on the requested model.
 	model, _ := payload["model"].(string)
-	_, _, upstreamModel, _ := server.resolveRouteForModel(model)
+	_, _, upstreamModel, _, found := server.resolveRouteForModel(model)
+	if !found {
+		return nil, false, fmt.Errorf("model not configured: %q", model)
+	}
 	payload["model"] = upstreamModel
 
 	normalized, err := json.Marshal(payload)

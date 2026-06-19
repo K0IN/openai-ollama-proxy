@@ -270,6 +270,90 @@ func TestOpenAIModels_List(t *testing.T) {
 	}
 }
 
+// TestOpenAIModels_SupportsVision verifies that when a model mapping has
+// SupportsVision=true, the /v1/models response includes supports_vision: true.
+func TestOpenAIModels_SupportsVision(t *testing.T) {
+	router, _ := config.BuildRoutingTable([]config.UpstreamConfig{
+		{
+			URL: "http://localhost:8000",
+			Models: []config.ModelMapping{
+				{Upstream: "gpt-4o-upstream", Local: "gpt-4o", ContextLength: 128000, SupportsVision: true},
+				{Upstream: "gpt-4o-mini-upstream", Local: "gpt-4o-mini", ContextLength: 128000},
+			},
+		},
+	}, 65536)
+
+	server := New(config.Config{ListenAddr: ":11434", ModelContextLength: 65536}, router, &http.Client{Timeout: 5 * time.Second}, stats.New())
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	w := httptest.NewRecorder()
+	server.handleOpenAIModels(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+
+	var resp types.OpenAIModelListResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	for _, m := range resp.Data {
+		switch m.ID {
+		case "gpt-4o":
+			if !m.SupportsVision {
+				t.Errorf("gpt-4o supports_vision = false, want true")
+			}
+		case "gpt-4o-mini":
+			if m.SupportsVision {
+				t.Errorf("gpt-4o-mini supports_vision = true, want false")
+			}
+		}
+	}
+}
+
+// TestOpenAIModels_SupportsThinking verifies that expanded thinking aliases
+// are exposed in /v1/models with supports_thinking: true.
+func TestOpenAIModels_SupportsThinking(t *testing.T) {
+	router, _ := config.BuildRoutingTable([]config.UpstreamConfig{
+		{
+			URL: "http://localhost:8000",
+			Models: []config.ModelMapping{
+				{Upstream: "reasoner-upstream", Local: "reasoner", ContextLength: 128000, SupportsThinking: []string{"low", "medium"}},
+				{Upstream: "plain-upstream", Local: "plain", ContextLength: 128000},
+			},
+		},
+	}, 65536)
+
+	server := New(config.Config{ListenAddr: ":11434", ModelContextLength: 65536}, router, &http.Client{Timeout: 5 * time.Second}, stats.New())
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	w := httptest.NewRecorder()
+	server.handleOpenAIModels(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+
+	var resp types.OpenAIModelListResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	for _, m := range resp.Data {
+		switch m.ID {
+		case "reasoner-low", "reasoner-medium":
+			if !m.SupportsThinking {
+				t.Errorf("%s supports_thinking = false, want true", m.ID)
+			}
+		case "plain":
+			if m.SupportsThinking {
+				t.Errorf("plain supports_thinking = true, want false")
+			}
+		}
+	}
+}
+
 // TestOpenAIModels_MethodNotAllowed verifies non-GET requests return 405.
 func TestOpenAIModels_MethodNotAllowed(t *testing.T) {
 	router, _ := config.BuildRoutingTable([]config.UpstreamConfig{
@@ -381,6 +465,84 @@ func TestOpenAIChat_UpstreamError(t *testing.T) {
 	// 429 maps to 503 from the upstream (503 handling in retry loop)
 	if w.Code != http.StatusServiceUnavailable && w.Code != http.StatusTooManyRequests {
 		t.Errorf("status = %d, want 503 or 429 (body=%s)", w.Code, w.Body.String())
+	}
+}
+
+func TestOpenAIChat_RetryOnErrorEventuallySucceeds(t *testing.T) {
+	var attempts int
+	content := "ok"
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts <= 2 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "rate limited"})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(types.OpenAIChatResponse{
+			Model: "gpt-4o-upstream",
+			Choices: []types.OpenAIChoice{{
+				Message: &types.OpenAIRespMsg{Role: "assistant", Content: &content},
+			}},
+		})
+	}))
+	defer upstream.Close()
+
+	originalSchedule := retryErrorBackoffSchedule
+	retryErrorBackoffSchedule = []time.Duration{time.Millisecond, time.Millisecond, time.Millisecond}
+	defer func() { retryErrorBackoffSchedule = originalSchedule }()
+
+	router, _ := config.BuildRoutingTable([]config.UpstreamConfig{{
+		URL:          upstream.URL,
+		RetryOnError: true,
+		Models:       []config.ModelMapping{{Upstream: "m", Local: "gpt-4o"}},
+	}}, 65536)
+	server := NewWithClients(config.Config{ListenAddr: ":11434", UpstreamStartupWait: 0, UpstreamRetryInterval: 10 * time.Millisecond},
+		router, &http.Client{Timeout: 5 * time.Second}, &http.Client{Timeout: 5 * time.Second}, stats.New())
+
+	body := `{"model":"gpt-4o","messages":[{"role":"user","content":"Hi"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	server.handleOpenAIChat(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body=%s)", w.Code, w.Body.String())
+	}
+	if attempts != 3 {
+		t.Fatalf("attempts = %d, want 3", attempts)
+	}
+}
+
+func TestOpenAIChat_RetryOnErrorExhaustedReturnsError(t *testing.T) {
+	var attempts int
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		w.WriteHeader(http.StatusTooManyRequests)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "rate limited"})
+	}))
+	defer upstream.Close()
+
+	originalSchedule := retryErrorBackoffSchedule
+	retryErrorBackoffSchedule = []time.Duration{time.Millisecond, time.Millisecond, time.Millisecond}
+	defer func() { retryErrorBackoffSchedule = originalSchedule }()
+
+	router, _ := config.BuildRoutingTable([]config.UpstreamConfig{{
+		URL:          upstream.URL,
+		RetryOnError: true,
+		Models:       []config.ModelMapping{{Upstream: "m", Local: "gpt-4o"}},
+	}}, 65536)
+	server := NewWithClients(config.Config{ListenAddr: ":11434", UpstreamStartupWait: 0, UpstreamRetryInterval: 10 * time.Millisecond},
+		router, &http.Client{Timeout: 5 * time.Second}, &http.Client{Timeout: 5 * time.Second}, stats.New())
+
+	body := `{"model":"gpt-4o","messages":[{"role":"user","content":"Hi"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	server.handleOpenAIChat(w, req)
+
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429 (body=%s)", w.Code, w.Body.String())
+	}
+	if attempts != 4 {
+		t.Fatalf("attempts = %d, want 4", attempts)
 	}
 }
 

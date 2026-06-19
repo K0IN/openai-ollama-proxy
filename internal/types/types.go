@@ -1,6 +1,63 @@
 package types
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
+
+// ThinkValue represents the Ollama "think" parameter, which can be either a
+// boolean (true/false) or a string level ("low"/"medium"/"high").
+type ThinkValue struct {
+	IsSet bool
+	Bool  bool   // valid when IsSet && !IsString
+	Level string // valid when IsSet && IsString
+}
+
+// IsBool returns true when ThinkValue holds a boolean (not a string level).
+func (tv ThinkValue) IsBool() bool { return tv.IsSet && tv.Level == "" }
+
+// IsStringLevel returns true when ThinkValue holds a string level.
+func (tv ThinkValue) IsStringLevel() bool { return tv.IsSet && tv.Level != "" }
+
+// IsTrue returns true when the value is the boolean true (not a string).
+func (tv ThinkValue) IsTrue() bool { return tv.IsSet && tv.Level == "" && tv.Bool }
+
+// IsFalse returns true when the value is the boolean false (not a string).
+func (tv ThinkValue) IsFalse() bool { return tv.IsSet && tv.Level == "" && !tv.Bool }
+
+// StringLevel returns the string level ("low"/"medium"/"high"), empty if
+// the value is a boolean or not set.
+func (tv ThinkValue) StringLevel() string { return tv.Level }
+
+func (tv ThinkValue) MarshalJSON() ([]byte, error) {
+	if !tv.IsSet {
+		return []byte("null"), nil
+	}
+	if tv.Level != "" {
+		return json.Marshal(tv.Level)
+	}
+	return json.Marshal(tv.Bool)
+}
+
+func (tv *ThinkValue) UnmarshalJSON(data []byte) error {
+	// Try string first.
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		tv.IsSet = true
+		tv.Bool = false
+		tv.Level = s
+		return nil
+	}
+	// Try bool.
+	var b bool
+	if err := json.Unmarshal(data, &b); err == nil {
+		tv.IsSet = true
+		tv.Bool = b
+		tv.Level = ""
+		return nil
+	}
+	return fmt.Errorf("think must be a boolean or string, got %s", string(data))
+}
 
 type OllamaChatRequest struct {
 	Model     string          `json:"model"`
@@ -10,7 +67,7 @@ type OllamaChatRequest struct {
 	Stream    *bool           `json:"stream,omitempty"`
 	Options   OllamaOptions   `json:"options,omitempty"`
 	KeepAlive json.RawMessage `json:"keep_alive,omitempty"`
-	Think     *bool           `json:"think,omitempty"`
+	Think     *ThinkValue     `json:"think,omitempty"`
 }
 
 type OllamaGenerateRequest struct {
@@ -26,7 +83,7 @@ type OllamaGenerateRequest struct {
 	KeepAlive json.RawMessage `json:"keep_alive,omitempty"`
 	Images    []string        `json:"images,omitempty"`
 	Options   OllamaOptions   `json:"options,omitempty"`
-	Think     *bool           `json:"think,omitempty"`
+	Think     *ThinkValue     `json:"think,omitempty"`
 }
 
 type OllamaMessage struct {
@@ -205,6 +262,7 @@ type OpenAIChatRequest struct {
 	MinP               *float64              `json:"min_p,omitempty"`
 	RepetitionPenalty  *float64              `json:"repetition_penalty,omitempty"`
 	ChatTemplateKwargs map[string]any        `json:"chat_template_kwargs,omitempty"`
+	ReasoningEffort    *string               `json:"reasoning_effort,omitempty"`
 }
 
 type OpenAIStreamOptions struct {
@@ -266,11 +324,13 @@ type OpenAIModelListResponse struct {
 }
 
 type OpenAIModel struct {
-	Object      string `json:"object,omitempty"`
-	ID          string `json:"id"`
-	OwnedBy     string `json:"owned_by,omitempty"`
-	Root        string `json:"root"`
-	MaxModelLen int    `json:"max_model_len"`
+	Object           string `json:"object,omitempty"`
+	ID               string `json:"id"`
+	OwnedBy          string `json:"owned_by,omitempty"`
+	Root             string `json:"root"`
+	MaxModelLen      int    `json:"max_model_len"`
+	SupportsVision   bool   `json:"supports_vision,omitempty"`
+	SupportsThinking bool   `json:"supports_thinking,omitempty"`
 }
 
 type OpenAIChoice struct {
@@ -289,9 +349,14 @@ type OpenAIRespMsg struct {
 }
 
 type OpenAIUsage struct {
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
-	TotalTokens      int `json:"total_tokens"`
+	PromptTokens            int                      `json:"prompt_tokens"`
+	CompletionTokens        int                      `json:"completion_tokens"`
+	TotalTokens             int                      `json:"total_tokens"`
+	CompletionTokensDetails *CompletionTokensDetails `json:"completion_tokens_details,omitempty"`
+}
+
+type CompletionTokensDetails struct {
+	ReasoningTokens int `json:"reasoning_tokens"`
 }
 
 type OpenAIEmbedRequest struct {

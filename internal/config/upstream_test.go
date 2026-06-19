@@ -36,6 +36,21 @@ func TestModelMappingValidate(t *testing.T) {
 			m:       ModelMapping{Upstream: "gpt-4o", Local: "gpt-4o", ContextLength: -1},
 			wantErr: "context_length must be >= 0",
 		},
+		{
+			name:    "valid supports_thinking levels",
+			m:       ModelMapping{Upstream: "gpt-4o", Local: "gpt-4o", SupportsThinking: []string{"low", "medium"}},
+			wantErr: "",
+		},
+		{
+			name:    "invalid supports_thinking level",
+			m:       ModelMapping{Upstream: "gpt-4o", Local: "gpt-4o", SupportsThinking: []string{"extreme"}},
+			wantErr: "supports_thinking contains invalid level",
+		},
+		{
+			name:    "invalid thinking_level",
+			m:       ModelMapping{Upstream: "gpt-4o", Local: "gpt-4o", ThinkingLevel: "extreme"},
+			wantErr: "thinking_level must be one of low, medium, high",
+		},
 	}
 
 	for _, tt := range tests {
@@ -254,11 +269,52 @@ func TestBuildRoutingTable(t *testing.T) {
 		}
 	})
 
+	t.Run("expands thinking modes into ollama aliases", func(t *testing.T) {
+		upstreams := []UpstreamConfig{
+			{
+				URL: "http://localhost:8000",
+				Models: []ModelMapping{
+					{Upstream: "gpt-5.4", Local: "test-model", SupportsThinking: []string{"low", "medium"}, SupportsVision: true},
+				},
+			},
+		}
+
+		rt, err := BuildRoutingTable(upstreams, 65536)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		models := rt.AllModels()
+		if len(models) != 2 {
+			t.Fatalf("AllModels length = %d, want 2", len(models))
+		}
+		if models[0] != "test-model-low" || models[1] != "test-model-medium" {
+			t.Fatalf("AllModels = %v, want expanded thinking aliases", models)
+		}
+
+		low, ok := rt.Lookup("test-model-low")
+		if !ok {
+			t.Fatal("test-model-low not found")
+		}
+		if !low.SupportsThinking || low.ThinkingLevel != "low" {
+			t.Fatalf("low entry = %#v, want SupportsThinking=true ThinkingLevel=low", low)
+		}
+
+		medium, ok := rt.Lookup("test-model-medium")
+		if !ok {
+			t.Fatal("test-model-medium not found")
+		}
+		if !medium.SupportsThinking || medium.ThinkingLevel != "medium" {
+			t.Fatalf("medium entry = %#v, want SupportsThinking=true ThinkingLevel=medium", medium)
+		}
+	})
+
 	t.Run("passthrough propagation", func(t *testing.T) {
 		upstreams := []UpstreamConfig{
 			{
-				URL:         "http://localhost:8000",
-				Passthrough: true,
+				URL:          "http://localhost:8000",
+				Passthrough:  true,
+				RetryOnError: true,
 				Models: []ModelMapping{
 					{Upstream: "m1", Local: "m1"},
 				},
@@ -277,14 +333,17 @@ func TestBuildRoutingTable(t *testing.T) {
 		if !entry.Passthrough {
 			t.Fatal("Passthrough should be true")
 		}
+		if !entry.RetryOnError {
+			t.Fatal("RetryOnError should be true")
+		}
 		if entry.APIKey != "" {
 			t.Fatalf("APIKey should be empty, got %q", entry.APIKey)
 		}
 
-		// Verify AllUpstreams also carries the flag.
+		// Verify AllUpstreams also carries the flags.
 		all := rt.AllUpstreams()
-		if len(all) != 1 || !all[0].Passthrough {
-			t.Fatal("AllUpstreams passthrough flag not propagated")
+		if len(all) != 1 || !all[0].Passthrough || !all[0].RetryOnError {
+			t.Fatal("AllUpstreams flags not propagated")
 		}
 	})
 

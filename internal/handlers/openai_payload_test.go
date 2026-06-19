@@ -15,17 +15,17 @@ func Test_rewriteRequestModel(t *testing.T) {
 	}{
 		{
 			name:      "adds model field",
-			input:     map[string]any{"messages": []any{}},
+			input:     map[string]any{"model": "qwen3:latest", "messages": []any{}},
 			wantModel: "test-model",
 		},
 		{
 			name:      "overwrites existing model",
-			input:     map[string]any{"model": "old-model", "messages": []any{}},
+			input:     map[string]any{"model": "qwen3:latest", "messages": []any{}},
 			wantModel: "test-model",
 		},
 		{
 			name:      "preserves other fields",
-			input:     map[string]any{"temperature": 0.7, "stream": true},
+			input:     map[string]any{"model": "qwen3:latest", "temperature": 0.7, "stream": true},
 			wantModel: "test-model",
 		},
 	}
@@ -70,13 +70,13 @@ func Test_rewriteRequestForChat(t *testing.T) {
 	}{
 		{
 			name:           "adds model",
-			input:          map[string]any{"messages": []any{}},
+			input:          map[string]any{"model": "qwen3:latest", "messages": []any{}},
 			wantModel:      "test-model",
 			wantChatKwargs: false,
 		},
 		{
 			name:           "preserves existing chat_template_kwargs",
-			input:          map[string]any{"chat_template_kwargs": map[string]any{"enable_thinking": true}},
+			input:          map[string]any{"model": "qwen3:latest", "chat_template_kwargs": map[string]any{"enable_thinking": true}},
 			wantModel:      "test-model",
 			wantChatKwargs: true,
 		},

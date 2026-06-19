@@ -175,13 +175,21 @@ func (server *Server) handleShow(w http.ResponseWriter, r *http.Request) {
 		applyModelNameHints(&meta, req.Model)
 	}
 
+	capabilities := []string{"completion", "tools"}
+	if entry.SupportsVision {
+		capabilities = append(capabilities, "vision")
+	}
+	if entry.SupportsThinking {
+		capabilities = append(capabilities, "thinking")
+	}
+
 	resp := types.OllamaShowResponse{
 		Modelfile:    "# proxied model",
 		Parameters:   fmt.Sprintf("num_ctx %d", meta.ContextLength),
 		Template:     "",
 		Details:      toModelDetails(meta),
 		ModelInfo:    ollamaModelInfo(meta),
-		Capabilities: []string{"completion", "tools"},
+		Capabilities: capabilities,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

@@ -1,11 +1,8 @@
 package logging
 
 import (
-	"bytes"
 	"crypto/subtle"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -28,7 +25,7 @@ func (recorder *statusRecorder) Flush() {
 	}
 }
 
-func Middleware(debug bool, maxBodyBytes int, next http.Handler) http.Handler {
+func Middleware(debug bool, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Never log /stats requests.
 		if r.URL.Path == "/stats" {
@@ -52,27 +49,6 @@ func Middleware(debug bool, maxBodyBytes int, next http.Handler) http.Handler {
 				}
 			}
 			log.Printf(">>> %s %s | ua=%q\n%s", SanitizeForLog(r.Method), SanitizeForLog(r.URL.String()), SanitizeForLog(userAgent), headers.String()) // #nosec G706 -- inputs sanitized via SanitizeForLog
-
-			if r.Body != nil && r.Method == http.MethodPost {
-				body, _ := io.ReadAll(r.Body)
-				r.Body = io.NopCloser(bytes.NewReader(body))
-				if len(body) > 0 {
-					redacted := RedactJSONForLog(body)
-					var truncated []byte
-					if maxBodyBytes > 0 && len(redacted) > maxBodyBytes {
-						truncated = redacted[:maxBodyBytes]
-						truncated = append(truncated, []byte(fmt.Sprintf("\n... (truncated %d bytes)", len(redacted)-maxBodyBytes))...)
-					} else {
-						truncated = redacted
-					}
-					var indented bytes.Buffer
-					if err := json.Indent(&indented, truncated, "  ", "  "); err == nil {
-						log.Printf(">>> REQUEST BODY (%d bytes):\n  %s", len(body), indented.String())
-					} else {
-						log.Printf(">>> REQUEST BODY (%d bytes): %s", len(body), string(truncated))
-					}
-				}
-			}
 		}
 
 		next.ServeHTTP(recorder, r)

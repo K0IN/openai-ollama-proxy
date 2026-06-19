@@ -256,6 +256,231 @@ func TestHandleShow_MethodNotAllowed(t *testing.T) {
 	}
 }
 
+func TestHandleShow_VisionCapability(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(types.OpenAIModelListResponse{
+			Object: "list",
+			Data:   []types.OpenAIModel{{ID: "vision-model", Object: "model", OwnedBy: "test", MaxModelLen: 65536}},
+		})
+	}))
+	defer upstream.Close()
+
+	router, _ := config.BuildRoutingTable([]config.UpstreamConfig{
+		{
+			URL: upstream.URL,
+			Models: []config.ModelMapping{
+				{Upstream: "vision-model", Local: "vision-model:latest", ContextLength: 65536, SupportsVision: true},
+			},
+		},
+	}, 65536)
+
+	cfg := config.Config{
+		ListenAddr:            ":11434",
+		ModelContextLength:    65536,
+		OllamaVersion:         "0.6.4",
+		UpstreamStartupWait:   0,
+		UpstreamRetryInterval: 10 * time.Millisecond,
+	}
+	server := New(cfg, router, &http.Client{Timeout: 5 * time.Second}, stats.New())
+
+	req := httptest.NewRequest(http.MethodPost, "/api/show", strings.NewReader(`{"model":"vision-model:latest"}`))
+	w := httptest.NewRecorder()
+	server.handleShow(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+
+	var got map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+
+	capabilities, ok := got["capabilities"].([]any)
+	if !ok {
+		t.Fatalf("capabilities = %#v, want array", got["capabilities"])
+	}
+
+	hasCompletion := false
+	hasTools := false
+	hasVision := false
+	for _, c := range capabilities {
+		switch c.(string) {
+		case "completion":
+			hasCompletion = true
+		case "tools":
+			hasTools = true
+		case "vision":
+			hasVision = true
+		}
+	}
+	if !hasCompletion {
+		t.Error("capabilities missing 'completion'")
+	}
+	if !hasTools {
+		t.Error("capabilities missing 'tools'")
+	}
+	if !hasVision {
+		t.Error("capabilities missing 'vision'")
+	}
+}
+
+func TestHandleShow_NoVisionCapability(t *testing.T) {
+	router, _ := config.BuildRoutingTable([]config.UpstreamConfig{
+		{
+			URL: "http://localhost:8000",
+			Models: []config.ModelMapping{
+				{Upstream: "text-model", Local: "text-model:latest", ContextLength: 32768, SupportsVision: false},
+			},
+		},
+	}, 32768)
+
+	cfg := config.Config{
+		ListenAddr:            ":11434",
+		ModelContextLength:    32768,
+		OllamaVersion:         "0.6.4",
+		UpstreamStartupWait:   0,
+		UpstreamRetryInterval: 10 * time.Millisecond,
+	}
+	server := New(cfg, router, &http.Client{Timeout: 5 * time.Second}, stats.New())
+
+	req := httptest.NewRequest(http.MethodPost, "/api/show", strings.NewReader(`{"model":"text-model:latest"}`))
+	w := httptest.NewRecorder()
+	server.handleShow(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+
+	var got map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+
+	capabilities, ok := got["capabilities"].([]any)
+	if !ok {
+		t.Fatalf("capabilities = %#v, want array", got["capabilities"])
+	}
+
+	for _, c := range capabilities {
+		if c.(string) == "vision" {
+			t.Error("capabilities should NOT include 'vision' when SupportsVision=false")
+		}
+	}
+}
+
+func TestHandleShow_ThinkingCapability(t *testing.T) {
+	router, _ := config.BuildRoutingTable([]config.UpstreamConfig{
+		{
+			URL: "http://localhost:8000",
+			Models: []config.ModelMapping{
+				{Upstream: "thinking-model", Local: "thinking-model:latest", ContextLength: 65536, SupportsThinking: []string{"medium"}},
+			},
+		},
+	}, 65536)
+
+	cfg := config.Config{
+		ListenAddr:            ":11434",
+		ModelContextLength:    65536,
+		OllamaVersion:         "0.6.4",
+		UpstreamStartupWait:   0,
+		UpstreamRetryInterval: 10 * time.Millisecond,
+	}
+	server := New(cfg, router, &http.Client{Timeout: 5 * time.Second}, stats.New())
+
+	req := httptest.NewRequest(http.MethodPost, "/api/show", strings.NewReader(`{"model":"thinking-model:latest-medium"}`))
+	w := httptest.NewRecorder()
+	server.handleShow(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+
+	var got map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+
+	capabilities, ok := got["capabilities"].([]any)
+	if !ok {
+		t.Fatalf("capabilities = %#v, want array", got["capabilities"])
+	}
+
+	hasCompletion := false
+	hasTools := false
+	hasThinking := false
+	hasVision := false
+	for _, c := range capabilities {
+		switch c.(string) {
+		case "completion":
+			hasCompletion = true
+		case "tools":
+			hasTools = true
+		case "thinking":
+			hasThinking = true
+		case "vision":
+			hasVision = true
+		}
+	}
+	if !hasCompletion {
+		t.Error("capabilities missing 'completion'")
+	}
+	if !hasTools {
+		t.Error("capabilities missing 'tools'")
+	}
+	if !hasThinking {
+		t.Error("capabilities missing 'thinking' when SupportsThinking=true")
+	}
+	if hasVision {
+		t.Error("capabilities should NOT include 'vision' when SupportsVision=false")
+	}
+}
+
+func TestHandleShow_NoThinkingCapability(t *testing.T) {
+	router, _ := config.BuildRoutingTable([]config.UpstreamConfig{
+		{
+			URL: "http://localhost:8000",
+			Models: []config.ModelMapping{
+				{Upstream: "text-model", Local: "text-model:latest", ContextLength: 32768},
+			},
+		},
+	}, 32768)
+
+	cfg := config.Config{
+		ListenAddr:            ":11434",
+		ModelContextLength:    32768,
+		OllamaVersion:         "0.6.4",
+		UpstreamStartupWait:   0,
+		UpstreamRetryInterval: 10 * time.Millisecond,
+	}
+	server := New(cfg, router, &http.Client{Timeout: 5 * time.Second}, stats.New())
+
+	req := httptest.NewRequest(http.MethodPost, "/api/show", strings.NewReader(`{"model":"text-model:latest"}`))
+	w := httptest.NewRecorder()
+	server.handleShow(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+
+	var got map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+
+	capabilities, ok := got["capabilities"].([]any)
+	if !ok {
+		t.Fatalf("capabilities = %#v, want array", got["capabilities"])
+	}
+
+	for _, c := range capabilities {
+		if c.(string) == "thinking" {
+			t.Error("capabilities should NOT include 'thinking' when SupportsThinking=false")
+		}
+	}
+}
+
 func TestHandlePs(t *testing.T) {
 	server := newTestServer()
 	req := httptest.NewRequest(http.MethodGet, "/api/ps", nil)

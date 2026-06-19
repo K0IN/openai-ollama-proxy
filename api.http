@@ -123,7 +123,7 @@ Content-Type: application/json
 
 ###
 
-### Chat with thinking enabled
+### Chat with thinking enabled (boolean)
 POST {{host}}/api/chat HTTP/1.1
 Content-Type: application/json
 
@@ -134,6 +134,50 @@ Content-Type: application/json
   ],
   "stream": false,
   "think": true
+}
+
+###
+
+### Chat with thinking level (string: low/medium/high)
+POST {{host}}/api/chat HTTP/1.1
+Content-Type: application/json
+
+{
+  "model": "qwen3.6:27b",
+  "messages": [
+    {"role": "user", "content": "Solve this puzzle: A bat and a ball cost $1.10..."}
+  ],
+  "stream": false,
+  "think": "high"
+}
+
+###
+
+### Chat with auto-injected reasoning effort via model clone (xhigh)
+# Uses model-xhigh suffix which auto-injects reasoning_effort=high
+POST {{host}}/api/chat HTTP/1.1
+Content-Type: application/json
+
+{
+  "model": "qwen3.6:27b-xhigh",
+  "messages": [
+    {"role": "user", "content": "Prove that sqrt(2) is irrational."}
+  ],
+  "stream": false
+}
+
+###
+
+### Chat with auto-injected reasoning effort via model clone (low)
+POST {{host}}/api/chat HTTP/1.1
+Content-Type: application/json
+
+{
+  "model": "qwen3.6:27b-low",
+  "messages": [
+    {"role": "user", "content": "What is the capital of France?"}
+  ],
+  "stream": false
 }
 
 ###

@@ -220,12 +220,33 @@ func applyOptions(out *types.OpenAIChatRequest, options types.OllamaOptions) {
 	}
 }
 
-func applyThinkingPreference(out *types.OpenAIChatRequest, think *bool) {
-	if think != nil {
+func applyThinkingPreference(out *types.OpenAIChatRequest, think *types.ThinkValue) {
+	if think == nil || !think.IsSet {
+		return
+	}
+
+	if think.IsStringLevel() {
+		// String levels ("low"/"medium"/"high") — map to reasoning_effort.
+		level := think.StringLevel()
+		out.ReasoningEffort = &level
+		return
+	}
+
+	// Boolean — enable or disable thinking.
+	// True → reasoning_effort "high" + chat_template_kwargs for vLLM compat.
+	// False → explicitly disable via chat_template_kwargs.
+	if think.IsTrue() {
+		high := "high"
+		out.ReasoningEffort = &high
 		if out.ChatTemplateKwargs == nil {
 			out.ChatTemplateKwargs = map[string]any{}
 		}
-		out.ChatTemplateKwargs["enable_thinking"] = *think
+		out.ChatTemplateKwargs["enable_thinking"] = true
+	} else {
+		if out.ChatTemplateKwargs == nil {
+			out.ChatTemplateKwargs = map[string]any{}
+		}
+		out.ChatTemplateKwargs["enable_thinking"] = false
 	}
 }
 

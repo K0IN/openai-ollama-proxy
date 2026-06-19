@@ -38,6 +38,11 @@ api_key = "sk-openai"
 upstream = "gpt-4o"
 local = "gpt-4o"
 context_length = 128000
+
+[[upstream.models]]
+upstream = "gpt-5.4"
+local = "gpt-5.4"
+supports_thinking = ["low", "medium"]
 `
 		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 			t.Fatalf("write temp config: %v", err)
@@ -63,8 +68,8 @@ context_length = 128000
 
 		// Check router
 		models := router.AllModels()
-		if len(models) != 3 {
-			t.Fatalf("models = %v, want 3", models)
+		if len(models) != 5 {
+			t.Fatalf("models = %v, want 5", models)
 		}
 
 		// qwen-coder with explicit context_length
@@ -83,6 +88,16 @@ context_length = 128000
 		entry, _ = router.Lookup("gpt-4o")
 		if entry.APIKey != "sk-openai" {
 			t.Fatalf("gpt-4o APIKey = %q", entry.APIKey)
+		}
+
+		entry, _ = router.Lookup("gpt-5.4-low")
+		if !entry.SupportsThinking || entry.ThinkingLevel != "low" {
+			t.Fatalf("gpt-5.4-low entry = %#v", entry)
+		}
+
+		entry, _ = router.Lookup("gpt-5.4-medium")
+		if !entry.SupportsThinking || entry.ThinkingLevel != "medium" {
+			t.Fatalf("gpt-5.4-medium entry = %#v", entry)
 		}
 	})
 

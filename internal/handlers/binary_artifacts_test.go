@@ -567,3 +567,291 @@ func TestOllamaGenerate_WithImages_ExactData(t *testing.T) {
 		t.Errorf("response = %q, want %q", resp.Response, "Red pixel detected")
 	}
 }
+
+// --- 8. OpenAI /v1/chat/completions streaming with image_url ------------
+
+func TestOpenAIChat_StreamWithImage(t *testing.T) {
+	sseData := strings.Join([]string{
+		`data: {"id":"1","choices":[{"index":0,"delta":{"role":"assistant","content":""}}]}`,
+		``,
+		`data: {"id":"1","choices":[{"index":0,"delta":{"content":"I see"}}]}`,
+		``,
+		`data: {"id":"1","choices":[{"index":0,"delta":{"content":" a cat"}}]}`,
+		``,
+		`data: {"id":"1","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
+		``,
+		`data: {"id":"1","choices":[],"usage":{"prompt_tokens":100,"completion_tokens":5,"total_tokens":105}}`,
+		``,
+		`data: [DONE]`,
+		``,
+	}, "\n")
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req types.OpenAIChatRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decoding upstream request: %v", err)
+		}
+		// Verify multi-modal content is forwarded in stream request too
+		if len(req.Messages) != 1 {
+			t.Fatalf("len(messages) = %d, want 1", len(req.Messages))
+		}
+		var parts []types.OpenAIContentPart
+		if err := json.Unmarshal(req.Messages[0].Content, &parts); err != nil {
+			t.Fatalf("content should be array: %v (%s)", err, req.Messages[0].Content)
+		}
+		if len(parts) != 2 {
+			t.Fatalf("len(parts) = %d, want 2 (text + image)", len(parts))
+		}
+		if parts[1].Type != "image_url" || parts[1].ImageURL == nil {
+			t.Errorf("parts[1] = %+v, want image_url", parts[1])
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(sseData))
+	}))
+	defer upstream.Close()
+
+	router, _ := config.BuildRoutingTable([]config.UpstreamConfig{
+		{URL: upstream.URL, Models: []config.ModelMapping{{Upstream: "gpt-upstream", Local: "gpt-4o"}}},
+	}, 65536)
+
+	cfg := config.Config{
+		ListenAddr:            ":11434",
+		OllamaVersion:         "0.6.4",
+		UpstreamStartupWait:   0,
+		UpstreamRetryInterval: 10 * time.Millisecond,
+	}
+	server := NewWithClients(cfg, router, &http.Client{Timeout: 5 * time.Second}, &http.Client{Timeout: 5 * time.Second}, stats.New())
+
+	pngB64 := base64.StdEncoding.EncodeToString([]byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A})
+	body := `{"model":"gpt-4o","messages":[{"role":"user","content":[{"type":"text","text":"What is this?"},{"type":"image_url","image_url":{"url":"data:image/png;base64,` + pngB64 + `"}}]}],"stream":true}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	server.handleOpenAIChat(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body=%s)", w.Code, w.Body.String())
+	}
+
+	contentType := w.Result().Header.Get("Content-Type")
+	if !strings.HasPrefix(contentType, "text/event-stream") {
+		t.Fatalf("Content-Type = %q, want text/event-stream", contentType)
+	}
+
+	// Verify SSE stream contains the image response content
+	bodyStr := w.Body.String()
+	if !strings.Contains(bodyStr, "I see") {
+		t.Errorf("stream should contain 'I see', got: %s", bodyStr)
+	}
+	if !strings.Contains(bodyStr, "a cat") {
+		t.Errorf("stream should contain 'a cat', got: %s", bodyStr)
+	}
+	if !strings.Contains(bodyStr, "[DONE]") {
+		t.Error("stream should end with [DONE]")
+	}
+}
+
+// --- 9. Anthropic /v1/messages streaming with image content block -------
+
+func TestAnthropicMessages_StreamWithImage(t *testing.T) {
+	sseData := strings.Join([]string{
+		`data: {"id":"1","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"}}]}`,
+		``,
+		`data: {"id":"1","choices":[{"index":0,"delta":{"content":" image"}}]}`,
+		``,
+		`data: {"id":"1","choices":[{"index":0,"finish_reason":"stop","delta":{}}]}`,
+		``,
+		`data: {"id":"1","choices":[],"usage":{"prompt_tokens":50,"completion_tokens":5,"total_tokens":55}}`,
+		``,
+		`data: [DONE]`,
+		``,
+	}, "\n")
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req types.OpenAIChatRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decoding upstream request: %v", err)
+		}
+		// Verify Anthropic image is translated to OpenAI content parts
+		if len(req.Messages) != 1 {
+			t.Fatalf("len(messages) = %d, want 1", len(req.Messages))
+		}
+		var parts []types.OpenAIContentPart
+		if err := json.Unmarshal(req.Messages[0].Content, &parts); err != nil {
+			t.Fatalf("content should be array: %v (%s)", err, req.Messages[0].Content)
+		}
+		if len(parts) != 2 {
+			t.Fatalf("len(parts) = %d, want 2 (text + image)", len(parts))
+		}
+		if parts[1].Type != "image_url" || parts[1].ImageURL == nil {
+			t.Errorf("parts[1] = %+v, want image_url", parts[1])
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(sseData))
+	}))
+	defer upstream.Close()
+
+	router, _ := config.BuildRoutingTable([]config.UpstreamConfig{
+		{URL: upstream.URL, APIKey: "ant-key", Models: []config.ModelMapping{{Upstream: "claude-upstream", Local: "claude-sonnet-4-20250514"}}},
+	}, 200000)
+
+	cfg := config.Config{
+		ListenAddr:            ":11434",
+		ModelContextLength:    200000,
+		OllamaVersion:         "0.6.4",
+		UpstreamStartupWait:   0,
+		UpstreamRetryInterval: 10 * time.Millisecond,
+	}
+	server := NewWithClients(cfg, router, &http.Client{Timeout: 5 * time.Second}, &http.Client{Timeout: 5 * time.Second}, stats.New())
+
+	pngB64 := base64.StdEncoding.EncodeToString([]byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A})
+	body := `{
+		"model": "claude-sonnet-4-20250514",
+		"max_tokens": 1024,
+		"stream": true,
+		"messages": [{
+			"role": "user",
+			"content": [
+				{"type": "text", "text": "What is this?"},
+				{"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "` + pngB64 + `"}}
+			]
+		}]
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	server.handleAnthropicMessages(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body=%s)", w.Code, w.Body.String())
+	}
+
+	contentType := w.Result().Header.Get("Content-Type")
+	if !strings.HasPrefix(contentType, "text/event-stream") {
+		t.Fatalf("Content-Type = %q, want text/event-stream", contentType)
+	}
+
+	// Parse SSE events and verify Anthropic format
+	events := parseSSEEvents(w.Body.String())
+	if len(events) == 0 {
+		t.Fatal("expected SSE events, got none")
+	}
+
+	// First event should be message_start
+	if events[0].Event != "message_start" {
+		t.Errorf("first event = %q, want message_start", events[0].Event)
+	}
+
+	// Should have content_block_delta events with text
+	hasText := false
+	for _, e := range events {
+		if e.Event == "content_block_delta" {
+			var delta types.AnthropicContentBlockDeltaEvent
+			if err := json.Unmarshal([]byte(e.Data), &delta); err != nil {
+				t.Fatalf("unmarshal content_block_delta: %v", err)
+			}
+			if delta.Delta.Type == "text_delta" && delta.Delta.Text != "" {
+				hasText = true
+			}
+		}
+	}
+	if !hasText {
+		t.Error("no text_delta events found")
+	}
+}
+
+// --- 10. Ollama /api/chat streaming with images -------------------------
+
+func TestOllamaChat_StreamWithImages(t *testing.T) {
+	sseData := strings.Join([]string{
+		`data: {"id":"1","choices":[{"index":0,"delta":{"role":"assistant","content":"Let me"}}]}`,
+		``,
+		`data: {"id":"1","choices":[{"index":0,"delta":{"content":" see"}}]}`,
+		``,
+		`data: {"id":"1","choices":[{"index":0,"finish_reason":"stop","delta":{}}]}`,
+		``,
+		`data: {"id":"1","choices":[],"usage":{"prompt_tokens":100,"completion_tokens":3,"total_tokens":103}}`,
+		``,
+		`data: [DONE]`,
+		``,
+	}, "\n")
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req types.OpenAIChatRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decoding upstream request: %v", err)
+		}
+		// Verify Ollama image is translated to multi-modal parts
+		if len(req.Messages) != 1 {
+			t.Fatalf("len(messages) = %d, want 1", len(req.Messages))
+		}
+		var parts []types.OpenAIContentPart
+		if err := json.Unmarshal(req.Messages[0].Content, &parts); err != nil {
+			t.Fatalf("content should be array: %v (%s)", err, req.Messages[0].Content)
+		}
+		if len(parts) != 2 {
+			t.Fatalf("len(parts) = %d, want 2 (text + image)", len(parts))
+		}
+		if parts[0].Type != "text" || parts[0].Text != "What is in this photo?" {
+			t.Errorf("parts[0] = %+v, want text", parts[0])
+		}
+		if parts[1].Type != "image_url" || parts[1].ImageURL == nil {
+			t.Errorf("parts[1] = %+v, want image_url", parts[1])
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(sseData))
+	}))
+	defer upstream.Close()
+
+	router, _ := config.BuildRoutingTable([]config.UpstreamConfig{
+		{URL: upstream.URL, Models: []config.ModelMapping{{Upstream: "m", Local: "qwen3:latest"}}},
+	}, 65536)
+	server := NewWithClients(config.Config{ListenAddr: ":11434", UpstreamStartupWait: 0, UpstreamRetryInterval: 10 * time.Millisecond},
+		router, &http.Client{Timeout: 5 * time.Second}, &http.Client{Timeout: 5 * time.Second}, stats.New())
+
+	pngB64 := base64.StdEncoding.EncodeToString([]byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A})
+	body := `{"model":"qwen3:latest","messages":[{"role":"user","content":"What is in this photo?","images":["` + pngB64 + `"]}],"stream":true}`
+	req := httptest.NewRequest(http.MethodPost, "/api/chat", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	server.handleChat(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body=%s)", w.Code, w.Body.String())
+	}
+
+	contentType := w.Result().Header.Get("Content-Type")
+	if !strings.HasPrefix(contentType, "application/x-ndjson") {
+		t.Fatalf("Content-Type = %q, want application/x-ndjson", contentType)
+	}
+
+	lines := strings.Split(strings.TrimSpace(w.Body.String()), "\n")
+	if len(lines) < 3 {
+		t.Fatalf("expected at least 3 NDJSON lines, got %d: %s", len(lines), w.Body.String())
+	}
+
+	var first types.OllamaChatResponse
+	_ = json.Unmarshal([]byte(lines[0]), &first)
+	if first.Model != "qwen3:latest" {
+		t.Errorf("model = %q, want qwen3:latest", first.Model)
+	}
+	if !strings.Contains(first.Message.Content, "Let me") {
+		t.Errorf("first chunk content = %q, want to contain 'Let me'", first.Message.Content)
+	}
+
+	// Last line should be the done marker
+	var last types.OllamaChatResponse
+	_ = json.Unmarshal([]byte(lines[len(lines)-1]), &last)
+	if !last.Done {
+		t.Error("last chunk should be done")
+	}
+	if last.PromptEvalCount != 100 {
+		t.Errorf("prompt_eval_count = %d, want 100", last.PromptEvalCount)
+	}
+	if last.EvalCount != 3 {
+		t.Errorf("eval_count = %d, want 3", last.EvalCount)
+	}
+}

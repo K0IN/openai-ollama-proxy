@@ -8,24 +8,33 @@ import (
 )
 
 type ModelMapping struct {
-	Upstream      string `toml:"upstream"`
-	Local         string `toml:"local"`
-	ContextLength int    `toml:"context_length,omitempty"`
+	Upstream          string   `toml:"upstream"`
+	Local             string   `toml:"local"`
+	ContextLength     int      `toml:"context_length,omitempty"`
+	SupportsVision    bool     `toml:"supports_vision,omitempty"`
+	SupportsThinking  []string `toml:"supports_thinking,omitempty"`
+	EnableThinkingAPI bool     `toml:"-"`
+	ThinkingLevel     string   `toml:"thinking_level,omitempty"`
 }
 
 type UpstreamConfig struct {
-	URL         string         `toml:"url"`
-	APIKey      string         `toml:"api_key"`
-	Passthrough bool           `toml:"passthrough"`
-	Models      []ModelMapping `toml:"models"`
+	URL          string         `toml:"url"`
+	APIKey       string         `toml:"api_key"`
+	Passthrough  bool           `toml:"passthrough"`
+	RetryOnError bool           `toml:"retry_on_429"` // config key kept for backward compat; also retries 5xx and 403
+	Models       []ModelMapping `toml:"models"`
 }
 
 type UpstreamEntry struct {
-	URL           string
-	APIKey        string
-	Passthrough   bool
-	UpstreamModel string
-	ContextLength int
+	URL              string
+	APIKey           string
+	Passthrough      bool
+	RetryOnError     bool
+	UpstreamModel    string
+	ContextLength    int
+	SupportsVision   bool
+	SupportsThinking bool
+	ThinkingLevel    string
 }
 
 type RoutingTable struct {
@@ -67,6 +76,24 @@ func (m ModelMapping) Validate() error {
 		return fmt.Errorf("model mapping context_length must be >= 0 (got %d)", m.ContextLength)
 	}
 	return nil
+}
+
+func (m ModelMapping) expandedModels() []ModelMapping {
+	base := m
+	base.EnableThinkingAPI = len(m.SupportsThinking) > 0 || m.ThinkingLevel != ""
+	if len(m.SupportsThinking) == 0 {
+		return []ModelMapping{base}
+	}
+
+	expanded := make([]ModelMapping, 0, len(m.SupportsThinking))
+	for _, level := range m.SupportsThinking {
+		clone := base
+		clone.Local = fmt.Sprintf("%s-%s", m.Local, level)
+		clone.ThinkingLevel = level
+		clone.SupportsThinking = nil
+		expanded = append(expanded, clone)
+	}
+	return expanded
 }
 
 func (u UpstreamConfig) Validate() error {
@@ -113,24 +140,30 @@ func BuildRoutingTable(upstreams []UpstreamConfig, globalCtxLen int) (*RoutingTa
 		}
 
 		for _, m := range u.Models {
-			local := m.Local
-			if _, exists := entries[local]; exists {
-				return nil, fmt.Errorf("duplicate local model %q (upstream[%d] %s)", local, i, u.URL)
-			}
+			for _, expanded := range m.expandedModels() {
+				local := expanded.Local
+				if _, exists := entries[local]; exists {
+					return nil, fmt.Errorf("duplicate local model %q (upstream[%d] %s)", local, i, u.URL)
+				}
 
-			ctxLen := globalCtxLen
-			if m.ContextLength > 0 {
-				ctxLen = m.ContextLength
-			}
+				ctxLen := globalCtxLen
+				if expanded.ContextLength > 0 {
+					ctxLen = expanded.ContextLength
+				}
 
-			entries[local] = UpstreamEntry{
-				URL:           u.URL,
-				APIKey:        u.APIKey,
-				Passthrough:   u.Passthrough,
-				UpstreamModel: m.Upstream,
-				ContextLength: ctxLen,
+				entries[local] = UpstreamEntry{
+					URL:              u.URL,
+					APIKey:           u.APIKey,
+					Passthrough:      u.Passthrough,
+					RetryOnError:     u.RetryOnError,
+					UpstreamModel:    expanded.Upstream,
+					ContextLength:    ctxLen,
+					SupportsVision:   expanded.SupportsVision,
+					SupportsThinking: expanded.EnableThinkingAPI,
+					ThinkingLevel:    expanded.ThinkingLevel,
+				}
+				allModels = append(allModels, local)
 			}
-			allModels = append(allModels, local)
 		}
 	}
 

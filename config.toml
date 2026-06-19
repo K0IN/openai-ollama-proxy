@@ -21,8 +21,11 @@ url = "http://vllm:8000"
 # Use either api_key or passthrough, not both.
 api_key = "change-me"
 # passthrough = true   # passes the client's API key as-is to the upstream
+# retry_on_429 = true  # retries on 429 (rate limit), 5xx (server error), and 403 (forbidden)
 
 [[upstream.models]]
 upstream = "Qwen3.6"
 local = "qwen3:latest"
 context_length = 65536
+# supports_thinking = ["none", "minimal", "low", "medium", "high", "xhigh"]
+# supports_vision = true   # uncomment if the model supports image inputs (for Copilot/GitHub Chat compatibility)

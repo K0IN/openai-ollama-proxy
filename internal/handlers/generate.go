@@ -59,9 +59,21 @@ func (server *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Resolve route for the requested model.
-	baseURL, apiKey, upstreamModel, _, passthrough := server.resolveRouteForModelPassthrough(ollamaReq.Model)
+	baseURL, apiKey, upstreamModel, _, passthrough, found := server.resolveRouteForModelPassthrough(ollamaReq.Model)
+	if !found {
+		http.Error(w, fmt.Sprintf("model not configured: %q", ollamaReq.Model), http.StatusNotFound)
+		return
+	}
 	apiKey = server.resolveEffectiveAPIKey(apiKey, passthrough, applogging.ExtractAPIKey(r))
 	openAIReq.Model = upstreamModel
+
+	// Inject model-level thinking level if no explicit think was set by client.
+	if ollamaReq.Think == nil {
+		if entry, ok := server.router.Lookup(ollamaReq.Model); ok && entry.ThinkingLevel != "" {
+			level := entry.ThinkingLevel
+			openAIReq.ReasoningEffort = &level
+		}
+	}
 
 	openAIBody, err := json.Marshal(openAIReq)
 	if err != nil {
@@ -71,7 +83,7 @@ func (server *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 
 	timings := newObservedTimings()
 
-	resp, err := server.doUpstreamChatWithRetryForRoute(r.Context(), openAIBody, baseURL, apiKey)
+	resp, err := server.doUpstreamChatWithRetryForRoute(r.Context(), openAIBody, baseURL, apiKey, server.shouldRetryOnError(ollamaReq.Model))
 	if err != nil {
 		http.Error(w, "upstream not ready: "+err.Error(), http.StatusServiceUnavailable)
 		return
@@ -79,8 +91,8 @@ func (server *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		errBody, _ := io.ReadAll(resp.Body)
-		log.Printf("upstream generate error %d: %s | sent: %s", resp.StatusCode, string(errBody), string(applogging.RedactJSONForLog(openAIBody)))
+		_, _ = io.ReadAll(resp.Body)
+		log.Printf("upstream generate error %d | sent: %d bytes", resp.StatusCode, len(openAIBody))
 		http.Error(w, fmt.Sprintf("upstream error: %d", resp.StatusCode), resp.StatusCode)
 		return
 	}
@@ -147,7 +159,7 @@ func (server *Server) handleGenerateStream(w http.ResponseWriter, body io.Reader
 
 		var chunk types.OpenAIChatResponse
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			log.Printf("generate stream decode error: %v, data: %s", err, data)
+			log.Printf("generate stream decode error: %v", err)
 			continue
 		}
 
@@ -231,18 +243,10 @@ func (server *Server) handleEmbed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	baseURL, apiKey, upstreamModel, _, passthrough := server.resolveRouteForModelPassthrough(ollamaReq.Model)
-	if baseURL == "" {
-		// Fallback to first upstream if no model match.
-		upstreams := server.router.AllUpstreams()
-		if len(upstreams) > 0 {
-			baseURL = upstreams[0].URL
-			apiKey = upstreams[0].APIKey
-			passthrough = upstreams[0].Passthrough
-			if upstreamModel == "" && len(upstreams[0].Models) > 0 {
-				upstreamModel = upstreams[0].Models[0].Upstream
-			}
-		}
+	baseURL, apiKey, upstreamModel, _, passthrough, found := server.resolveRouteForModelPassthrough(ollamaReq.Model)
+	if !found {
+		http.Error(w, fmt.Sprintf("model not configured: %q", ollamaReq.Model), http.StatusNotFound)
+		return
 	}
 	apiKey = server.resolveEffectiveAPIKey(apiKey, passthrough, applogging.ExtractAPIKey(r))
 
@@ -278,8 +282,8 @@ func (server *Server) handleEmbed(w http.ResponseWriter, r *http.Request) {
 	timings.markResponseStart()
 
 	if resp.StatusCode != http.StatusOK {
-		errBody, _ := io.ReadAll(resp.Body)
-		log.Printf("upstream embed error %d: %s", resp.StatusCode, string(errBody))
+		_, _ = io.ReadAll(resp.Body)
+		log.Printf("upstream embed error %d", resp.StatusCode)
 		http.Error(w, fmt.Sprintf("upstream error: %d", resp.StatusCode), resp.StatusCode)
 		return
 	}
@@ -321,14 +325,10 @@ func (server *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 		input, _ = json.Marshal(ollamaReq.Prompt)
 	}
 
-	baseURL, apiKey, upstreamModel, _, passthrough := server.resolveRouteForModelPassthrough(ollamaReq.Model)
-	if baseURL == "" {
-		upstreams := server.router.AllUpstreams()
-		if len(upstreams) > 0 {
-			baseURL = upstreams[0].URL
-			apiKey = upstreams[0].APIKey
-			passthrough = upstreams[0].Passthrough
-		}
+	baseURL, apiKey, upstreamModel, _, passthrough, found := server.resolveRouteForModelPassthrough(ollamaReq.Model)
+	if !found {
+		http.Error(w, fmt.Sprintf("model not configured: %q", ollamaReq.Model), http.StatusNotFound)
+		return
 	}
 	apiKey = server.resolveEffectiveAPIKey(apiKey, passthrough, applogging.ExtractAPIKey(r))
 
@@ -357,8 +357,8 @@ func (server *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		errBody, _ := io.ReadAll(resp.Body)
-		log.Printf("upstream embeddings error %d: %s", resp.StatusCode, string(errBody))
+		_, _ = io.ReadAll(resp.Body)
+		log.Printf("upstream embeddings error %d", resp.StatusCode)
 		http.Error(w, fmt.Sprintf("upstream error: %d", resp.StatusCode), resp.StatusCode)
 		return
 	}

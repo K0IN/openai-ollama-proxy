@@ -23,3 +23,4 @@ api_key = "change-me"
 upstream = "qwen3:latest"
 local = "qwen3:latest"
 context_length = 65536
+# supports_vision = true   # uncomment for image/vision model support

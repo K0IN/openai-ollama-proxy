@@ -60,7 +60,7 @@ func TestHandleEmbed_SingleInput(t *testing.T) {
 
 	server.router = upstreamRouter(upstream.URL, "")
 
-	req := httptest.NewRequest(http.MethodPost, "/api/embed", strings.NewReader(`{"model":"all-minilm","input":"Why is the sky blue?"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/embed", strings.NewReader(`{"model":"qwen3:latest","input":"Why is the sky blue?"}`))
 	w := httptest.NewRecorder()
 	server.handleEmbed(w, req)
 
@@ -86,8 +86,8 @@ func TestHandleEmbed_SingleInput(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Model != "all-minilm" {
-		t.Fatalf("Model = %q, want %q", got.Model, "all-minilm")
+	if got.Model != "qwen3:latest" {
+		t.Fatalf("Model = %q, want %q", got.Model, "qwen3:latest")
 	}
 	if len(got.Embeddings) != 1 {
 		t.Fatalf("len(Embeddings) = %d, want 1", len(got.Embeddings))
@@ -135,7 +135,7 @@ func TestHandleEmbed_MultipleInput(t *testing.T) {
 
 	server.router = upstreamRouter(upstream.URL, "")
 
-	req := httptest.NewRequest(http.MethodPost, "/api/embed", strings.NewReader(`{"model":"all-minilm","input":["Why is the sky blue?","Why is the grass green?"]}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/embed", strings.NewReader(`{"model":"qwen3:latest","input":["Why is the sky blue?","Why is the grass green?"]}`))
 	w := httptest.NewRecorder()
 	server.handleEmbed(w, req)
 
@@ -178,7 +178,7 @@ func TestHandleEmbeddings_DeprecatedEndpoint(t *testing.T) {
 
 	server.router = upstreamRouter(upstream.URL, "")
 
-	req := httptest.NewRequest(http.MethodPost, "/api/embeddings", strings.NewReader(`{"model":"all-minilm","prompt":"Here is an article about llamas..."}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/embeddings", strings.NewReader(`{"model":"qwen3:latest","prompt":"Here is an article about llamas..."}`))
 	w := httptest.NewRecorder()
 	server.handleEmbeddings(w, req)
 

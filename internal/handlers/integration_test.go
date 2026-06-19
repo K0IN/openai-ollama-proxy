@@ -143,15 +143,15 @@ func TestMultiUpstream_Routing(t *testing.T) {
 		}
 	})
 
-	// Test 3: Unknown model → falls back to first upstream
+	// Test 3: Unknown model → rejected with 404
 	t.Run("unknown_model", func(t *testing.T) {
 		body := strings.NewReader(`{"model":"nonexistent","messages":[{"role":"user","content":"Hi"}],"stream":false}`)
 		req := httptest.NewRequest(http.MethodPost, "/api/chat", body)
 		w := httptest.NewRecorder()
 		server.handleChat(w, req)
 
-		if w.Code != http.StatusOK {
-			t.Errorf("status = %d, want 200 (unknown models fall back to first upstream, body=%s)", w.Code, w.Body.String())
+		if w.Code != http.StatusNotFound {
+			t.Errorf("status = %d, want 404 (unknown models must be rejected, body=%s)", w.Code, w.Body.String())
 		}
 	})
 }
