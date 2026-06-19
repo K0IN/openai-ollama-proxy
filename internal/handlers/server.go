@@ -384,7 +384,6 @@ func (server *Server) doUpstreamChatWithRetryForRoute(ctx context.Context, paylo
 
 				_, _ = io.Copy(io.Discard, resp.Body)
 				_ = resp.Body.Close()
-				lastErr = fmt.Errorf("upstream returned %d", resp.StatusCode)
 
 				delay := retryErrorBackoffSchedule[retryErrorAttempts]
 				retryErrorAttempts++

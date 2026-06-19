@@ -120,7 +120,8 @@ func TestAnthropicStream_ToolCallAccumulation(t *testing.T) {
 	}
 
 	if toolStart == nil {
-		t.Fatalf("no tool_use content_block_start emitted; events=%v", events)
+		t.Fatal("no tool_use content_block_start emitted; events=", events)
+		return
 	}
 	if toolStart.ContentBlock.Name != "get_weather" {
 		t.Errorf("tool name = %q, want get_weather", toolStart.ContentBlock.Name)

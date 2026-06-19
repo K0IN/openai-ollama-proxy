@@ -37,19 +37,19 @@ func TestModelMappingValidate(t *testing.T) {
 			wantErr: "context_length must be >= 0",
 		},
 		{
-			name:    "valid supports_thinking levels",
+			name:    "valid arbitrary supports_thinking levels",
 			m:       ModelMapping{Upstream: "gpt-4o", Local: "gpt-4o", SupportsThinking: []string{"low", "medium"}},
 			wantErr: "",
 		},
 		{
-			name:    "invalid supports_thinking level",
+			name:    "valid passthrough supports_thinking level",
 			m:       ModelMapping{Upstream: "gpt-4o", Local: "gpt-4o", SupportsThinking: []string{"extreme"}},
-			wantErr: "supports_thinking contains invalid level",
+			wantErr: "",
 		},
 		{
-			name:    "invalid thinking_level",
+			name:    "valid passthrough thinking_level",
 			m:       ModelMapping{Upstream: "gpt-4o", Local: "gpt-4o", ThinkingLevel: "extreme"},
-			wantErr: "thinking_level must be one of low, medium, high",
+			wantErr: "",
 		},
 	}
 
