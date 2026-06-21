@@ -120,7 +120,11 @@ func (server *Server) handleGenerateNonStream(w http.ResponseWriter, body io.Rea
 	timings.markComplete()
 
 	if openAIResp.Usage != nil {
-		server.stats.Record(model, openAIResp.Usage.PromptTokens, openAIResp.Usage.CompletionTokens, time.Duration(timings.evalDuration()))
+		statsModel := model
+		if openAIResp.Model != "" {
+			statsModel = openAIResp.Model
+		}
+		server.stats.Record(statsModel, openAIResp.Usage.PromptTokens, openAIResp.Usage.CompletionTokens, time.Duration(timings.evalDuration()))
 	}
 
 	ollamaResp := translate.OpenAIChatToOllamaGenerate(openAIResp, model)
@@ -145,6 +149,7 @@ func (server *Server) handleGenerateStream(w http.ResponseWriter, body io.Reader
 	scanner.Buffer(make([]byte, 0, 256*1024), 10*1024*1024)
 	pendingDoneReason := ""
 	sentFinal := false
+	var upstreamModelForStats string
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -161,6 +166,11 @@ func (server *Server) handleGenerateStream(w http.ResponseWriter, body io.Reader
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
 			log.Printf("generate stream decode error: %v", err)
 			continue
+		}
+
+		// Track the upstream model name from any chunk that carries it.
+		if chunk.Model != "" {
+			upstreamModelForStats = chunk.Model
 		}
 
 		ollamaChunk := translate.OpenAIStreamChunkToOllamaGenerate(chunk, model)
@@ -182,7 +192,11 @@ func (server *Server) handleGenerateStream(w http.ResponseWriter, body io.Reader
 			applyObservedGenerateTimings(&ollamaChunk, timings)
 			sentFinal = true
 
-			server.stats.Record(model, ollamaChunk.PromptEvalCount, ollamaChunk.EvalCount, time.Duration(timings.evalDuration()))
+			statsModel := model
+			if upstreamModelForStats != "" {
+				statsModel = upstreamModelForStats
+			}
+			server.stats.Record(statsModel, ollamaChunk.PromptEvalCount, ollamaChunk.EvalCount, time.Duration(timings.evalDuration()))
 		}
 
 		out, err := json.Marshal(ollamaChunk)

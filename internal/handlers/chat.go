@@ -138,7 +138,11 @@ func (server *Server) handleChatNonStream(w http.ResponseWriter, body io.Reader,
 	timings.markComplete()
 
 	if openAIResp.Usage != nil {
-		server.stats.Record(model, openAIResp.Usage.PromptTokens, openAIResp.Usage.CompletionTokens, time.Duration(timings.evalDuration()))
+		statsModel := model
+		if openAIResp.Model != "" {
+			statsModel = openAIResp.Model
+		}
+		server.stats.Record(statsModel, openAIResp.Usage.PromptTokens, openAIResp.Usage.CompletionTokens, time.Duration(timings.evalDuration()))
 		if server.cfg.Debug && openAIResp.Usage.CompletionTokensDetails != nil {
 			log.Printf("<<< UPSTREAM reasoning_tokens=%d", openAIResp.Usage.CompletionTokensDetails.ReasoningTokens)
 		}
@@ -172,6 +176,7 @@ func (server *Server) handleChatStream(w http.ResponseWriter, body io.Reader, mo
 	chunkIndex := 0
 	var toolCallStates []streaming.ToolCallState
 	var lastReasoningTokens int
+	var upstreamModelForStats string
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -193,6 +198,11 @@ func (server *Server) handleChatStream(w http.ResponseWriter, body io.Reader, mo
 		// Track reasoning_tokens from usage-bearing chunks (usually the final chunk).
 		if chunk.Usage != nil && chunk.Usage.CompletionTokensDetails != nil {
 			lastReasoningTokens = chunk.Usage.CompletionTokensDetails.ReasoningTokens
+		}
+
+		// Track the upstream model name from any chunk that carries it.
+		if chunk.Model != "" {
+			upstreamModelForStats = chunk.Model
 		}
 
 		toolCallDeltas := chunkToolCalls(chunk)
@@ -240,7 +250,11 @@ func (server *Server) handleChatStream(w http.ResponseWriter, body io.Reader, mo
 			timings.markComplete()
 			applyObservedChatTimings(&ollamaChunk, timings)
 
-			server.stats.Record(model, ollamaChunk.PromptEvalCount, ollamaChunk.EvalCount, time.Duration(timings.evalDuration()))
+			statsModel := model
+			if upstreamModelForStats != "" {
+				statsModel = upstreamModelForStats
+			}
+			server.stats.Record(statsModel, ollamaChunk.PromptEvalCount, ollamaChunk.EvalCount, time.Duration(timings.evalDuration()))
 			sentFinal = true
 		}
 

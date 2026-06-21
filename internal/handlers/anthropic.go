@@ -125,7 +125,11 @@ func (server *Server) handleAnthropicNonStream(w http.ResponseWriter, body io.Re
 	anthropicResp := convertOpenAIToAnthropic(openAIResp, model)
 
 	if openAIResp.Usage != nil {
-		server.stats.Record(model, openAIResp.Usage.PromptTokens, openAIResp.Usage.CompletionTokens, time.Duration(timings.evalDuration()))
+		statsModel := model
+		if openAIResp.Model != "" {
+			statsModel = openAIResp.Model
+		}
+		server.stats.Record(statsModel, openAIResp.Usage.PromptTokens, openAIResp.Usage.CompletionTokens, time.Duration(timings.evalDuration()))
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -158,6 +162,7 @@ func (server *Server) handleAnthropicStream(w http.ResponseWriter, body io.Reade
 
 	var finishReason *string
 	var promptTokens, completionTokens int
+	var upstreamModelForStats string
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -179,6 +184,10 @@ func (server *Server) handleAnthropicStream(w http.ResponseWriter, body io.Reade
 		if chunk.Usage != nil {
 			promptTokens = chunk.Usage.PromptTokens
 			completionTokens = chunk.Usage.CompletionTokens
+		}
+
+		if chunk.Model != "" {
+			upstreamModelForStats = chunk.Model
 		}
 
 		if len(chunk.Choices) == 0 {
@@ -252,7 +261,11 @@ func (server *Server) handleAnthropicStream(w http.ResponseWriter, body io.Reade
 	flusher.Flush()
 
 	if completionTokens > 0 || promptTokens > 0 {
-		server.stats.Record(model, promptTokens, completionTokens, time.Duration(timings.evalDuration()))
+		statsModel := model
+		if upstreamModelForStats != "" {
+			statsModel = upstreamModelForStats
+		}
+		server.stats.Record(statsModel, promptTokens, completionTokens, time.Duration(timings.evalDuration()))
 	}
 }
 
