@@ -29,7 +29,7 @@ GitHub Copilot (vscode) / Ollama client / Claude Code CLI
          │  OpenAI API
          ▼
 ┌──────────────────────┐
-│  OpenAI-compatible    │  :8000
+│  OpenAI-compatible   │  :8000
 │  API (vLLM/Ollama/…) │
 └──────────────────────┘
 ```
