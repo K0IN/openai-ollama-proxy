@@ -134,8 +134,12 @@ func (server *Server) handleOpenAIChat(w http.ResponseWriter, r *http.Request) {
 		timings.markComplete()
 
 		var openAIResp types.OpenAIChatResponse
+		statsModel := openAIResp.Model
+		if statsModel == "" {
+			statsModel = reqModel
+		}
 		if err := json.Unmarshal(normalized, &openAIResp); err == nil && openAIResp.Usage != nil {
-			server.stats.Record(openAIResp.Model, openAIResp.Usage.PromptTokens, openAIResp.Usage.CompletionTokens, time.Duration(timings.evalDuration()))
+			server.stats.Record(statsModel, openAIResp.Usage.PromptTokens, openAIResp.Usage.CompletionTokens, time.Duration(timings.evalDuration()))
 			if server.cfg.Debug && openAIResp.Usage.CompletionTokensDetails != nil {
 				log.Printf("<<< UPSTREAM (openai passthrough) reasoning_tokens=%d", openAIResp.Usage.CompletionTokensDetails.ReasoningTokens)
 			}

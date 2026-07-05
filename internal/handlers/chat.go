@@ -292,6 +292,15 @@ func (server *Server) handleChatStream(w http.ResponseWriter, body io.Reader, mo
 		}
 		timings.markComplete()
 		applyObservedChatTimings(&final, timings)
+
+		// Record stats even when the stream ended without a proper usage chunk
+		// so that the current model and request count stay accurate.
+		statsModel := model
+		if upstreamModelForStats != "" {
+			statsModel = upstreamModelForStats
+		}
+		server.stats.Record(statsModel, final.PromptEvalCount, final.EvalCount, time.Duration(timings.evalDuration()))
+
 		out, _ := json.Marshal(final)
 		_, _ = w.Write(out)
 		_, _ = w.Write([]byte("\n"))

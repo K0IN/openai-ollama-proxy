@@ -35,6 +35,7 @@ func (server *Server) proxyOpenAIStream(w http.ResponseWriter, resp *http.Respon
 	scanner.Buffer(make([]byte, 0, 256*1024), 10*1024*1024)
 
 	var lastChunkWithUsage types.OpenAIChatResponse
+	var upstreamModelForStats string // tracked from any chunk, used as fallback
 
 	for scanner.Scan() {
 		lineText := server.normalizeOpenAIStreamLine(scanner.Text())
@@ -50,6 +51,9 @@ func (server *Server) proxyOpenAIStream(w http.ResponseWriter, resp *http.Respon
 				if err := json.Unmarshal([]byte(data), &chunk); err == nil {
 					if chunk.Usage != nil {
 						lastChunkWithUsage = chunk
+					}
+					if chunk.Model != "" {
+						upstreamModelForStats = chunk.Model
 					}
 					if len(chunk.Choices) > 0 && chunk.Choices[0].Delta != nil && chunk.Choices[0].Delta.Content != nil && *chunk.Choices[0].Delta.Content != "" {
 						timings.markFirstVisibleOutput()
@@ -86,8 +90,15 @@ func (server *Server) proxyOpenAIStream(w http.ResponseWriter, resp *http.Respon
 
 	timings.markComplete()
 
-	if lastChunkWithUsage.Usage != nil && lastChunkWithUsage.Model != "" {
-		server.stats.Record(lastChunkWithUsage.Model, lastChunkWithUsage.Usage.PromptTokens, lastChunkWithUsage.Usage.CompletionTokens, time.Duration(timings.evalDuration()))
+	// Use the model name from the final usage chunk if available, otherwise
+	// fall back to any model name seen in the stream (some providers omit
+	// "model" from the usage-bearing chunk).
+	statsModel := lastChunkWithUsage.Model
+	if statsModel == "" {
+		statsModel = upstreamModelForStats
+	}
+	if lastChunkWithUsage.Usage != nil && statsModel != "" {
+		server.stats.Record(statsModel, lastChunkWithUsage.Usage.PromptTokens, lastChunkWithUsage.Usage.CompletionTokens, time.Duration(timings.evalDuration()))
 	}
 
 	var reasoningTokensStr string

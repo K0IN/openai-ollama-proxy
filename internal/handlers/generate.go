@@ -227,6 +227,13 @@ func (server *Server) handleGenerateStream(w http.ResponseWriter, body io.Reader
 		}
 		timings.markComplete()
 		applyObservedGenerateTimings(&final, timings)
+
+		statsModel := model
+		if upstreamModelForStats != "" {
+			statsModel = upstreamModelForStats
+		}
+		server.stats.Record(statsModel, final.PromptEvalCount, final.EvalCount, time.Duration(timings.evalDuration()))
+
 		out, _ := json.Marshal(final)
 		_, _ = w.Write(out)
 		_, _ = w.Write([]byte("\n"))
