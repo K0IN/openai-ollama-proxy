@@ -349,11 +349,17 @@ var retryErrorBackoffSchedule = []time.Duration{
 }
 
 // shouldRetryStatus returns true when the HTTP status code is a transient
-// error that can be retried: 429 (rate limit), 5xx (server error), or
+// error that can be retried: 429 (rate limit), 5xx (server error),
 // 403 (forbidden — some providers use 403 for rate-limiting / temporary
-// access-denied scenarios).
+// access-denied scenarios), 400 (bad request — some providers return this
+// transiently under load), or 401 (unauthorized — transient auth/propagation
+// errors on some providers).
 func shouldRetryStatus(code int) bool {
-	return code == http.StatusTooManyRequests || code == http.StatusForbidden || code >= http.StatusInternalServerError
+	return code == http.StatusTooManyRequests ||
+		code == http.StatusForbidden ||
+		code == http.StatusBadRequest ||
+		code == http.StatusUnauthorized ||
+		code >= http.StatusInternalServerError
 }
 
 func (server *Server) doUpstreamChatWithRetryForRoute(ctx context.Context, payload []byte, baseURL, apiKey string, retryOnError bool) (*http.Response, error) {

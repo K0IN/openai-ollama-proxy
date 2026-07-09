@@ -21,7 +21,7 @@ url = "http://vllm:8000"
 # Use either api_key or passthrough, not both.
 api_key = "change-me"
 # passthrough = true   # passes the client's API key as-is to the upstream
-# retry_on_429 = true  # retries on 429 (rate limit), 5xx (server error), and 403 (forbidden)
+# retry_on_429 = true  # retries on 429 (rate limit), 5xx (server error), 403 (forbidden), 400 (bad request), and 401 (unauthorized)
 
 [[upstream.models]]
 upstream = "Qwen3.6"

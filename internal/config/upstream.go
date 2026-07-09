@@ -21,7 +21,7 @@ type UpstreamConfig struct {
 	URL          string         `toml:"url"`
 	APIKey       string         `toml:"api_key"`
 	Passthrough  bool           `toml:"passthrough"`
-	RetryOnError bool           `toml:"retry_on_429"` // config key kept for backward compat; also retries 5xx and 403
+	RetryOnError bool           `toml:"retry_on_429"` // config key kept for backward compat; also retries 5xx, 403, 400, and 401
 	Models       []ModelMapping `toml:"models"`
 }
 

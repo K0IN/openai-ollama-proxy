@@ -45,14 +45,14 @@ model_context_length = 65536
 # [[upstream]]
 # url = "http://localhost:8000"
 # api_key = "change-me"
-# retry_on_429 = true    # retries 429, 5xx, 403 with exponential backoff
+# retry_on_429 = true    # retries 429, 5xx, 403, 400, 401 with exponential backoff
 
 # Option B: passthrough — pass the client's API key as-is to the upstream.
 # Each upstream can only use api_key or passthrough, not both.
 [[upstream]]
 url = "http://localhost:8000"
 passthrough = true
-# retry_on_429 = true    # retries 429, 5xx, 403 with exponential backoff
+# retry_on_429 = true    # retries 429, 5xx, 403, 400, 401 with exponential backoff
 
 [[upstream.models]]
 upstream = "Qwen3.6"
