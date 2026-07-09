@@ -22,6 +22,13 @@ type modelStat struct {
 	totalEval   time.Duration
 }
 
+// dailyModelStat tracks token usage for a specific model on a specific day.
+type dailyModelStat struct {
+	input    int
+	output   int
+	requests int
+}
+
 type Stats struct {
 	mu            sync.Mutex
 	startTime     time.Time
@@ -33,13 +40,16 @@ type Stats struct {
 	currentOutput int
 	currentModel  string
 	perModel      map[string]*modelStat
+	// dailyStats is keyed by "YYYY-MM-DD/model" for per-day per-model tracking.
+	dailyStats map[string]*dailyModelStat
 }
 
 func New() *Stats {
 	return &Stats{
-		startTime: time.Now(),
-		events:    make([]tokenEvent, 0, 64),
-		perModel:  make(map[string]*modelStat),
+		startTime:  time.Now(),
+		events:     make([]tokenEvent, 0, 64),
+		perModel:   make(map[string]*modelStat),
+		dailyStats: make(map[string]*dailyModelStat),
 	}
 }
 
@@ -73,6 +83,17 @@ func (s *Stats) Record(model string, inputTokens, outputTokens int, evalDuration
 		evalDuration: evalDuration,
 		model:        model,
 	})
+
+	// Track daily per-model stats (keyed by "YYYY-MM-DD/model")
+	dayKey := time.Now().Format("2006-01-02") + "/" + model
+	ds, ok := s.dailyStats[dayKey]
+	if !ok {
+		ds = &dailyModelStat{}
+		s.dailyStats[dayKey] = ds
+	}
+	ds.input += inputTokens
+	ds.output += outputTokens
+	ds.requests++
 
 	// Prune events older than 5 minutes to prevent unbounded growth
 	cutoff := time.Now().Add(-5 * time.Minute)
@@ -154,6 +175,9 @@ func (s *Stats) Snapshot() StatsSnapshot {
 		}
 	}
 
+	// Build daily per-model snapshot for the last 7 days
+	daily := buildDailyStats(s.dailyStats)
+
 	return StatsSnapshot{
 		Model:                 s.currentModel,
 		TotalInput:            s.totalInput,
@@ -169,6 +193,7 @@ func (s *Stats) Snapshot() StatsSnapshot {
 		AvgOutputTokensPerSec: avgOutputTokensPerSec,
 		AvgTokensPerSec:       avgTokensPerSec,
 		PerModel:              perModel,
+		Daily:                 daily,
 	}
 }
 
@@ -198,19 +223,30 @@ type StatsSnapshot struct {
 	AvgTokensPerSec       float64 // average total tokens/sec across last 10 requests
 	// Per-model stats (overall)
 	PerModel map[string]PerModelStats
+	// Daily per-model breakdown for the last 7 days
+	Daily map[string]map[string]DailyModelStats
+}
+
+// DailyModelStats holds token usage for a single model on a single day.
+type DailyModelStats struct {
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
+	TotalTokens  int `json:"total_tokens"`
+	Requests     int `json:"requests"`
 }
 
 // --- Persistence ------------------------------------------------------------
 
 // saveData is the JSON-serializable subset of Stats for disk persistence.
 type saveData struct {
-	TotalInput    int                   `json:"total_input_tokens"`
-	TotalOutput   int                   `json:"total_output_tokens"`
-	Requests      int                   `json:"total_requests"`
-	CurrentModel  string                `json:"current_model"`
-	CurrentInput  int                   `json:"current_input_tokens"`
-	CurrentOutput int                   `json:"current_output_tokens"`
-	PerModel      map[string]*modelStat `json:"per_model"`
+	TotalInput    int                        `json:"total_input_tokens"`
+	TotalOutput   int                        `json:"total_output_tokens"`
+	Requests      int                        `json:"total_requests"`
+	CurrentModel  string                     `json:"current_model"`
+	CurrentInput  int                        `json:"current_input_tokens"`
+	CurrentOutput int                        `json:"current_output_tokens"`
+	PerModel      map[string]*modelStat      `json:"per_model"`
+	DailyStats    map[string]*dailyModelStat `json:"daily_stats,omitempty"`
 }
 
 // modelStat for JSON serialization
@@ -234,6 +270,7 @@ func (s *Stats) Save(path string) error {
 		CurrentInput:  s.currentInput,
 		CurrentOutput: s.currentOutput,
 		PerModel:      s.perModel,
+		DailyStats:    s.dailyStats,
 	}
 
 	payload, err := json.Marshal(data)
@@ -276,6 +313,10 @@ func LoadFromFile(path string) (*Stats, error) {
 	if s.perModel == nil {
 		s.perModel = make(map[string]*modelStat)
 	}
+	s.dailyStats = raw.DailyStats
+	if s.dailyStats == nil {
+		s.dailyStats = make(map[string]*dailyModelStat)
+	}
 
 	return s, nil
 }
@@ -300,5 +341,96 @@ func (m *modelStat) UnmarshalJSON(data []byte) error {
 	m.totalOutput = j.TotalOutput
 	m.requests = j.Requests
 	m.totalEval = time.Duration(j.TotalEvalNs)
+	return nil
+}
+
+// --- Daily stats helpers ----------------------------------------------------
+
+// dailyModelStatJSON is the serialization format for daily stats.
+type dailyModelStatJSON struct {
+	Input    int `json:"input_tokens"`
+	Output   int `json:"output_tokens"`
+	Requests int `json:"requests"`
+}
+
+// buildDailyStats builds a map of date -> model -> DailyModelStats for the
+// last 7 days. It prunes entries older than 7 days to prevent unbounded growth.
+func buildDailyStats(dailyStats map[string]*dailyModelStat) map[string]map[string]DailyModelStats {
+	if len(dailyStats) == 0 {
+		return nil
+	}
+
+	now := time.Now()
+	cutoffDate := now.AddDate(0, 0, -6).Format("2006-01-02")
+
+	// Collect all unique dates and prune old entries.
+	dateSet := make(map[string]bool)
+	for key := range dailyStats {
+		// Key format: "YYYY-MM-DD/model"
+		slashIdx := stringsIndex(key, "/")
+		if slashIdx <= 0 {
+			continue
+		}
+		dateStr := key[:slashIdx]
+		// Prune entries older than 7 days.
+		if dateStr < cutoffDate {
+			delete(dailyStats, key)
+			continue
+		}
+		dateSet[dateStr] = true
+	}
+
+	result := make(map[string]map[string]DailyModelStats)
+	for dateStr := range dateSet {
+		result[dateStr] = make(map[string]DailyModelStats)
+	}
+
+	for key, ds := range dailyStats {
+		slashIdx := stringsIndex(key, "/")
+		if slashIdx <= 0 {
+			continue
+		}
+		dateStr := key[:slashIdx]
+		model := key[slashIdx+1:]
+		result[dateStr][model] = DailyModelStats{
+			InputTokens:  ds.input,
+			OutputTokens: ds.output,
+			TotalTokens:  ds.input + ds.output,
+			Requests:     ds.requests,
+		}
+	}
+
+	return result
+}
+
+// stringsIndex is a minimal dependency-free helper to find the first index of
+// a substring, avoiding an extra import for "strings" when it's not needed.
+func stringsIndex(s, substr string) int {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return i
+		}
+	}
+	return -1
+}
+
+// MarshalJSON implements json.Marshaler for dailyModelStat.
+func (d *dailyModelStat) MarshalJSON() ([]byte, error) {
+	return json.Marshal(dailyModelStatJSON{
+		Input:    d.input,
+		Output:   d.output,
+		Requests: d.requests,
+	})
+}
+
+// UnmarshalJSON implements json.Unmarshaler for dailyModelStat.
+func (d *dailyModelStat) UnmarshalJSON(data []byte) error {
+	var j dailyModelStatJSON
+	if err := json.Unmarshal(data, &j); err != nil {
+		return err
+	}
+	d.input = j.Input
+	d.output = j.Output
+	d.requests = j.Requests
 	return nil
 }

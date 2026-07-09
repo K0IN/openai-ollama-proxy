@@ -513,7 +513,7 @@ Proxy-specific endpoints for monitoring and health checks.
 
 **`GET /stats`**
 
-Get real-time statistics about the proxy. Returns JSON with lifetime totals, current request info, and token rates.
+Get real-time statistics about the proxy. Returns JSON with lifetime totals, current request info, token rates, and per-day per-model breakdown for the last 7 days.
 
 **Response:**
 ```json
@@ -541,6 +541,30 @@ Get real-time statistics about the proxy. Returns JSON with lifetime totals, cur
         "total_requests": 30,
         "output_tokens_per_sec": 40.0
       }
+    },
+    "daily": {
+      "2026-07-09": {
+        "qwen3:latest": {
+          "input_tokens": 5000,
+          "output_tokens": 25000,
+          "total_tokens": 30000,
+          "requests": 15
+        },
+        "llama3:8b": {
+          "input_tokens": 2000,
+          "output_tokens": 10000,
+          "total_tokens": 12000,
+          "requests": 8
+        }
+      },
+      "2026-07-08": {
+        "qwen3:latest": {
+          "input_tokens": 3000,
+          "output_tokens": 15000,
+          "total_tokens": 18000,
+          "requests": 10
+        }
+      }
     }
   }
 }
@@ -552,7 +576,7 @@ Get real-time statistics about the proxy. Returns JSON with lifetime totals, cur
 | `model` | string | Name of the most recent model used |
 | `total_input_tokens` | int | Total input tokens processed since proxy start |
 | `total_output_tokens` | int | Total output tokens generated since proxy start |
-| `total_tokens` | int | Sum of input and output tokens |
+| `total_tokens` | int | Sum of input and output tokens (lifetime total) |
 | `total_requests` | int | Total number of requests processed |
 | `uptime_seconds` | float | Seconds since proxy started |
 | `current_input_tokens` | int | Input tokens from the most recent request |
@@ -564,6 +588,16 @@ Get real-time statistics about the proxy. Returns JSON with lifetime totals, cur
 | `avg_output_tokens_per_sec` | float | Average output tokens/sec across the last 10 requests |
 | `avg_tokens_per_sec` | float | Average total tokens/sec across the last 10 requests |
 | `per_model` | object | Per-model breakdown of total tokens and requests (lifetime) |
+| `daily` | object | Per-day per-model token usage for the last 7 days (auto-pruned) |
+
+**Daily stats structure:**
+The `daily` field is a nested map: `{ "YYYY-MM-DD": { "model-name": { ... } } }`. Each day's entry contains per-model breakdowns with:
+- `input_tokens`: input tokens consumed that day for this model
+- `output_tokens`: output tokens generated that day for this model
+- `total_tokens`: sum of input and output tokens
+- `requests`: number of requests that day for this model
+
+Entries older than 7 days are automatically pruned to prevent unbounded growth. Daily stats persist across restarts via the stats save file.
 
 **Example usage (waybar):**
 ```bash
@@ -575,6 +609,12 @@ curl -s http://localhost:11434/stats | jq -r '.stats.tokens_per_sec'
 
 # Format for waybar display
 curl -s http://localhost:11434/stats | jq -r '"\(.stats.output_tokens_per_sec | round) tok/s"'
+
+# Get today's token usage per model
+curl -s http://localhost:11434/stats | jq -r '.stats.daily["'$(date +%Y-%m-%d)'"]'
+
+# Get total tokens used today across all models
+curl -s http://localhost:11434/stats | jq '[.stats.daily["'$(date +%Y-%m-%d)'"][] .total_tokens] | add // 0'
 ```
 
 ---

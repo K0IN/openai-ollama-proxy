@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/k0in/openai-ollama-proxy/internal/stats"
 	"github.com/k0in/openai-ollama-proxy/internal/types"
 )
 
@@ -304,11 +305,35 @@ func (server *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 			"avg_output_tokens_per_sec": snapshot.AvgOutputTokensPerSec,
 			"avg_tokens_per_sec":        snapshot.AvgTokensPerSec,
 			"per_model":                 perModelStats,
+			"daily":                     buildDailyStatsResponse(snapshot.Daily),
 		},
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
+}
+
+// buildDailyStatsResponse converts the daily per-model stats map into a JSON-friendly format.
+func buildDailyStatsResponse(daily map[string]map[string]stats.DailyModelStats) map[string]interface{} {
+	if len(daily) == 0 {
+		return nil
+	}
+
+	result := make(map[string]interface{})
+	for date, models := range daily {
+		modelMap := make(map[string]interface{})
+		for model, ms := range models {
+			modelMap[model] = map[string]interface{}{
+				"input_tokens":  ms.InputTokens,
+				"output_tokens": ms.OutputTokens,
+				"total_tokens":  ms.TotalTokens,
+				"requests":      ms.Requests,
+			}
+		}
+		result[date] = modelMap
+	}
+
+	return result
 }
 
 func toModelDetails(metadata modelMetadata) types.OllamaModelDetails {
