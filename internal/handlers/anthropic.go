@@ -129,7 +129,11 @@ func (server *Server) handleAnthropicNonStream(w http.ResponseWriter, body io.Re
 		if openAIResp.Model != "" {
 			statsModel = openAIResp.Model
 		}
-		server.stats.Record(statsModel, openAIResp.Usage.PromptTokens, openAIResp.Usage.CompletionTokens, time.Duration(timings.evalDuration()))
+		cachedInput := 0
+		if openAIResp.Usage.PromptTokensDetails != nil {
+			cachedInput = openAIResp.Usage.PromptTokensDetails.CachedTokens
+		}
+		server.stats.Record(statsModel, openAIResp.Usage.PromptTokens, openAIResp.Usage.CompletionTokens, cachedInput, time.Duration(timings.evalDuration()))
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -265,7 +269,7 @@ func (server *Server) handleAnthropicStream(w http.ResponseWriter, body io.Reade
 		if upstreamModelForStats != "" {
 			statsModel = upstreamModelForStats
 		}
-		server.stats.Record(statsModel, promptTokens, completionTokens, time.Duration(timings.evalDuration()))
+		server.stats.Record(statsModel, promptTokens, completionTokens, 0, time.Duration(timings.evalDuration()))
 	}
 }
 

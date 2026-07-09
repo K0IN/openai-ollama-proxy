@@ -16,7 +16,7 @@ jobs:
             - name: Set up Go
               uses: actions/setup-go@v5
               with:
-                  go-version: "1.25.9"
+                  go-version: "1.25.11"
                   cache: true
 
             - name: Run golangci-lint
@@ -35,7 +35,7 @@ jobs:
             - name: Set up Go
               uses: actions/setup-go@v5
               with:
-                  go-version: "1.25.9"
+                  go-version: "1.25.11"
                   cache: true
 
             - name: Install gosec
@@ -54,7 +54,7 @@ jobs:
             - name: Set up Go
               uses: actions/setup-go@v5
               with:
-                  go-version: "1.25.9"
+                  go-version: "1.25.11"
                   cache: true
 
             - name: Install govulncheck
@@ -72,7 +72,7 @@ jobs:
             - name: Set up Go
               uses: actions/setup-go@v5
               with:
-                  go-version: "1.25.9"
+                  go-version: "1.25.11"
                   cache: true
 
             - name: Run unit tests
@@ -92,7 +92,7 @@ jobs:
             - name: Set up Go
               uses: actions/setup-go@v5
               with:
-                  go-version: "1.25.9"
+                  go-version: "1.25.11"
                   cache-dependency-path: |
                       go.sum
                       tests/conformance/go.sum
@@ -110,7 +110,7 @@ jobs:
             - name: Set up Go
               uses: actions/setup-go@v5
               with:
-                  go-version: "1.25.9"
+                  go-version: "1.25.11"
                   cache: true
 
             - name: Build binary

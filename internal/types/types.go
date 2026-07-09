@@ -130,6 +130,8 @@ type OllamaChatResponse struct {
 	PromptEvalDuration int64         `json:"prompt_eval_duration,omitempty"`
 	EvalCount          int           `json:"eval_count,omitempty"`
 	EvalDuration       int64         `json:"eval_duration,omitempty"`
+	PromptCacheHit     int           `json:"prompt_cache_hit,omitempty"`
+	PromptCacheMiss    int           `json:"prompt_cache_miss,omitempty"`
 }
 
 type OllamaGenerateResponse struct {
@@ -147,6 +149,8 @@ type OllamaGenerateResponse struct {
 	EvalCount          int              `json:"eval_count,omitempty"`
 	EvalDuration       int64            `json:"eval_duration,omitempty"`
 	ToolCalls          []OllamaToolCall `json:"tool_calls,omitempty"`
+	PromptCacheHit     int              `json:"prompt_cache_hit,omitempty"`
+	PromptCacheMiss    int              `json:"prompt_cache_miss,omitempty"`
 }
 
 type OllamaEmbedRequest struct {
@@ -352,7 +356,12 @@ type OpenAIUsage struct {
 	PromptTokens            int                      `json:"prompt_tokens"`
 	CompletionTokens        int                      `json:"completion_tokens"`
 	TotalTokens             int                      `json:"total_tokens"`
+	PromptTokensDetails     *PromptTokensDetails     `json:"prompt_tokens_details,omitempty"`
 	CompletionTokensDetails *CompletionTokensDetails `json:"completion_tokens_details,omitempty"`
+}
+
+type PromptTokensDetails struct {
+	CachedTokens int `json:"cached_tokens,omitempty"`
 }
 
 type CompletionTokensDetails struct {

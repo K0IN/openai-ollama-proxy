@@ -139,7 +139,11 @@ func (server *Server) handleOpenAIChat(w http.ResponseWriter, r *http.Request) {
 			statsModel = reqModel
 		}
 		if err := json.Unmarshal(normalized, &openAIResp); err == nil && openAIResp.Usage != nil {
-			server.stats.Record(statsModel, openAIResp.Usage.PromptTokens, openAIResp.Usage.CompletionTokens, time.Duration(timings.evalDuration()))
+			cachedInput := 0
+			if openAIResp.Usage.PromptTokensDetails != nil {
+				cachedInput = openAIResp.Usage.PromptTokensDetails.CachedTokens
+			}
+			server.stats.Record(statsModel, openAIResp.Usage.PromptTokens, openAIResp.Usage.CompletionTokens, cachedInput, time.Duration(timings.evalDuration()))
 			if server.cfg.Debug && openAIResp.Usage.CompletionTokensDetails != nil {
 				log.Printf("<<< UPSTREAM (openai passthrough) reasoning_tokens=%d", openAIResp.Usage.CompletionTokensDetails.ReasoningTokens)
 			}

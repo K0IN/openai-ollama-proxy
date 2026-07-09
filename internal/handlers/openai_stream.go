@@ -98,7 +98,11 @@ func (server *Server) proxyOpenAIStream(w http.ResponseWriter, resp *http.Respon
 		statsModel = upstreamModelForStats
 	}
 	if lastChunkWithUsage.Usage != nil && statsModel != "" {
-		server.stats.Record(statsModel, lastChunkWithUsage.Usage.PromptTokens, lastChunkWithUsage.Usage.CompletionTokens, time.Duration(timings.evalDuration()))
+		cachedInput := 0
+		if lastChunkWithUsage.Usage.PromptTokensDetails != nil {
+			cachedInput = lastChunkWithUsage.Usage.PromptTokensDetails.CachedTokens
+		}
+		server.stats.Record(statsModel, lastChunkWithUsage.Usage.PromptTokens, lastChunkWithUsage.Usage.CompletionTokens, cachedInput, time.Duration(timings.evalDuration()))
 	}
 
 	var reasoningTokensStr string

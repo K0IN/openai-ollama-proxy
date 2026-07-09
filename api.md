@@ -523,6 +523,7 @@ Get real-time statistics about the proxy. Returns JSON with lifetime totals, cur
     "total_input_tokens": 12345,
     "total_output_tokens": 67890,
     "total_tokens": 80235,
+    "cached_input_tokens": 5000,
     "total_requests": 42,
     "uptime_seconds": 3600.5,
     "current_input_tokens": 100,
@@ -538,6 +539,7 @@ Get real-time statistics about the proxy. Returns JSON with lifetime totals, cur
         "total_input_tokens": 10000,
         "total_output_tokens": 50000,
         "total_tokens": 60000,
+        "cached_input_tokens": 4000,
         "total_requests": 30,
         "output_tokens_per_sec": 40.0
       }
@@ -548,12 +550,14 @@ Get real-time statistics about the proxy. Returns JSON with lifetime totals, cur
           "input_tokens": 5000,
           "output_tokens": 25000,
           "total_tokens": 30000,
+          "cached_input": 2000,
           "requests": 15
         },
         "llama3:8b": {
           "input_tokens": 2000,
           "output_tokens": 10000,
           "total_tokens": 12000,
+          "cached_input": 500,
           "requests": 8
         }
       },
@@ -562,6 +566,7 @@ Get real-time statistics about the proxy. Returns JSON with lifetime totals, cur
           "input_tokens": 3000,
           "output_tokens": 15000,
           "total_tokens": 18000,
+          "cached_input": 1000,
           "requests": 10
         }
       }
@@ -579,6 +584,7 @@ Get real-time statistics about the proxy. Returns JSON with lifetime totals, cur
 | `total_tokens` | int | Sum of input and output tokens (lifetime total) |
 | `total_requests` | int | Total number of requests processed |
 | `uptime_seconds` | float | Seconds since proxy started |
+| `cached_input_tokens` | int | Total input tokens served from cache (lifetime) |
 | `current_input_tokens` | int | Input tokens from the most recent request |
 | `current_output_tokens` | int | Output tokens from the most recent request |
 | `input_tokens_per_sec` | float | Input token rate (10s sliding window) |
@@ -595,6 +601,7 @@ The `daily` field is a nested map: `{ "YYYY-MM-DD": { "model-name": { ... } } }`
 - `input_tokens`: input tokens consumed that day for this model
 - `output_tokens`: output tokens generated that day for this model
 - `total_tokens`: sum of input and output tokens
+- `cached_input`: input tokens served from cache that day for this model
 - `requests`: number of requests that day for this model
 
 Entries older than 7 days are automatically pruned to prevent unbounded growth. Daily stats persist across restarts via the stats save file.

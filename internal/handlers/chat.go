@@ -142,7 +142,11 @@ func (server *Server) handleChatNonStream(w http.ResponseWriter, body io.Reader,
 		if openAIResp.Model != "" {
 			statsModel = openAIResp.Model
 		}
-		server.stats.Record(statsModel, openAIResp.Usage.PromptTokens, openAIResp.Usage.CompletionTokens, time.Duration(timings.evalDuration()))
+		cachedInput := 0
+		if openAIResp.Usage.PromptTokensDetails != nil {
+			cachedInput = openAIResp.Usage.PromptTokensDetails.CachedTokens
+		}
+		server.stats.Record(statsModel, openAIResp.Usage.PromptTokens, openAIResp.Usage.CompletionTokens, cachedInput, time.Duration(timings.evalDuration()))
 		if server.cfg.Debug && openAIResp.Usage.CompletionTokensDetails != nil {
 			log.Printf("<<< UPSTREAM reasoning_tokens=%d", openAIResp.Usage.CompletionTokensDetails.ReasoningTokens)
 		}
@@ -254,7 +258,7 @@ func (server *Server) handleChatStream(w http.ResponseWriter, body io.Reader, mo
 			if upstreamModelForStats != "" {
 				statsModel = upstreamModelForStats
 			}
-			server.stats.Record(statsModel, ollamaChunk.PromptEvalCount, ollamaChunk.EvalCount, time.Duration(timings.evalDuration()))
+			server.stats.Record(statsModel, ollamaChunk.PromptEvalCount, ollamaChunk.EvalCount, ollamaChunk.PromptCacheHit, time.Duration(timings.evalDuration()))
 			sentFinal = true
 		}
 
@@ -299,7 +303,7 @@ func (server *Server) handleChatStream(w http.ResponseWriter, body io.Reader, mo
 		if upstreamModelForStats != "" {
 			statsModel = upstreamModelForStats
 		}
-		server.stats.Record(statsModel, final.PromptEvalCount, final.EvalCount, time.Duration(timings.evalDuration()))
+		server.stats.Record(statsModel, final.PromptEvalCount, final.EvalCount, final.PromptCacheHit, time.Duration(timings.evalDuration()))
 
 		out, _ := json.Marshal(final)
 		_, _ = w.Write(out)

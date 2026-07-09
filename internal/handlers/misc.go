@@ -283,6 +283,7 @@ func (server *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 			"total_input_tokens":    ms.TotalInput,
 			"total_output_tokens":   ms.TotalOutput,
 			"total_tokens":          ms.TotalTokens,
+			"cached_input_tokens":   ms.CachedInput,
 			"total_requests":        ms.Requests,
 			"output_tokens_per_sec": ms.OutputTokensPerSec,
 		}
@@ -294,6 +295,7 @@ func (server *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 			"total_input_tokens":        snapshot.TotalInput,
 			"total_output_tokens":       snapshot.TotalOutput,
 			"total_tokens":              snapshot.TotalInput + snapshot.TotalOutput,
+			"cached_input_tokens":       snapshot.CachedInput,
 			"total_requests":            snapshot.Requests,
 			"uptime_seconds":            snapshot.Uptime.Seconds(),
 			"current_input_tokens":      snapshot.CurrentInput,
@@ -327,6 +329,7 @@ func buildDailyStatsResponse(daily map[string]map[string]stats.DailyModelStats) 
 				"input_tokens":  ms.InputTokens,
 				"output_tokens": ms.OutputTokens,
 				"total_tokens":  ms.TotalTokens,
+				"cached_input":  ms.CachedInput,
 				"requests":      ms.Requests,
 			}
 		}

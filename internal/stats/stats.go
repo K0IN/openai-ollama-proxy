@@ -11,6 +11,7 @@ type tokenEvent struct {
 	timestamp    time.Time
 	input        int
 	output       int
+	cachedInput  int
 	evalDuration time.Duration // time spent generating output tokens (nanos)
 	model        string
 }
@@ -18,15 +19,17 @@ type tokenEvent struct {
 type modelStat struct {
 	totalInput  int
 	totalOutput int
+	cachedInput int
 	requests    int
 	totalEval   time.Duration
 }
 
 // dailyModelStat tracks token usage for a specific model on a specific day.
 type dailyModelStat struct {
-	input    int
-	output   int
-	requests int
+	input       int
+	output      int
+	cachedInput int
+	requests    int
 }
 
 type Stats struct {
@@ -34,6 +37,7 @@ type Stats struct {
 	startTime     time.Time
 	totalInput    int
 	totalOutput   int
+	cachedInput   int
 	requests      int
 	events        []tokenEvent
 	currentInput  int
@@ -53,12 +57,13 @@ func New() *Stats {
 	}
 }
 
-func (s *Stats) Record(model string, inputTokens, outputTokens int, evalDuration time.Duration) {
+func (s *Stats) Record(model string, inputTokens, outputTokens, cachedInputTokens int, evalDuration time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.totalInput += inputTokens
 	s.totalOutput += outputTokens
+	s.cachedInput += cachedInputTokens
 	s.requests++
 
 	s.currentInput = inputTokens
@@ -73,6 +78,7 @@ func (s *Stats) Record(model string, inputTokens, outputTokens int, evalDuration
 	}
 	ms.totalInput += inputTokens
 	ms.totalOutput += outputTokens
+	ms.cachedInput += cachedInputTokens
 	ms.requests++
 	ms.totalEval += evalDuration
 
@@ -80,6 +86,7 @@ func (s *Stats) Record(model string, inputTokens, outputTokens int, evalDuration
 		timestamp:    time.Now(),
 		input:        inputTokens,
 		output:       outputTokens,
+		cachedInput:  cachedInputTokens,
 		evalDuration: evalDuration,
 		model:        model,
 	})
@@ -93,6 +100,7 @@ func (s *Stats) Record(model string, inputTokens, outputTokens int, evalDuration
 	}
 	ds.input += inputTokens
 	ds.output += outputTokens
+	ds.cachedInput += cachedInputTokens
 	ds.requests++
 
 	// Prune events older than 5 minutes to prevent unbounded growth
@@ -170,6 +178,7 @@ func (s *Stats) Snapshot() StatsSnapshot {
 			TotalInput:         ms.totalInput,
 			TotalOutput:        ms.totalOutput,
 			TotalTokens:        ms.totalInput + ms.totalOutput,
+			CachedInput:        ms.cachedInput,
 			Requests:           ms.requests,
 			OutputTokensPerSec: outputTokensPerSec,
 		}
@@ -182,6 +191,7 @@ func (s *Stats) Snapshot() StatsSnapshot {
 		Model:                 s.currentModel,
 		TotalInput:            s.totalInput,
 		TotalOutput:           s.totalOutput,
+		CachedInput:           s.cachedInput,
 		Requests:              s.requests,
 		Uptime:                now.Sub(s.startTime),
 		CurrentInput:          s.currentInput,
@@ -201,6 +211,7 @@ type PerModelStats struct {
 	TotalInput         int
 	TotalOutput        int
 	TotalTokens        int
+	CachedInput        int
 	Requests           int
 	OutputTokensPerSec float64
 }
@@ -209,6 +220,7 @@ type StatsSnapshot struct {
 	Model         string
 	TotalInput    int
 	TotalOutput   int
+	CachedInput   int
 	Requests      int
 	Uptime        time.Duration
 	CurrentInput  int
@@ -232,6 +244,7 @@ type DailyModelStats struct {
 	InputTokens  int `json:"input_tokens"`
 	OutputTokens int `json:"output_tokens"`
 	TotalTokens  int `json:"total_tokens"`
+	CachedInput  int `json:"cached_input"`
 	Requests     int `json:"requests"`
 }
 
@@ -241,6 +254,7 @@ type DailyModelStats struct {
 type saveData struct {
 	TotalInput    int                        `json:"total_input_tokens"`
 	TotalOutput   int                        `json:"total_output_tokens"`
+	CachedInput   int                        `json:"cached_input_tokens"`
 	Requests      int                        `json:"total_requests"`
 	CurrentModel  string                     `json:"current_model"`
 	CurrentInput  int                        `json:"current_input_tokens"`
@@ -253,6 +267,7 @@ type saveData struct {
 type modelStatJSON struct {
 	TotalInput  int   `json:"total_input_tokens"`
 	TotalOutput int   `json:"total_output_tokens"`
+	CachedInput int   `json:"cached_input_tokens"`
 	Requests    int   `json:"total_requests"`
 	TotalEvalNs int64 `json:"total_eval_ns"`
 }
@@ -265,6 +280,7 @@ func (s *Stats) Save(path string) error {
 	data := saveData{
 		TotalInput:    s.totalInput,
 		TotalOutput:   s.totalOutput,
+		CachedInput:   s.cachedInput,
 		Requests:      s.requests,
 		CurrentModel:  s.currentModel,
 		CurrentInput:  s.currentInput,
@@ -305,6 +321,7 @@ func LoadFromFile(path string) (*Stats, error) {
 	s := New()
 	s.totalInput = raw.TotalInput
 	s.totalOutput = raw.TotalOutput
+	s.cachedInput = raw.CachedInput
 	s.requests = raw.Requests
 	s.currentModel = raw.CurrentModel
 	s.currentInput = raw.CurrentInput
@@ -326,6 +343,7 @@ func (m *modelStat) MarshalJSON() ([]byte, error) {
 	return json.Marshal(modelStatJSON{
 		TotalInput:  m.totalInput,
 		TotalOutput: m.totalOutput,
+		CachedInput: m.cachedInput,
 		Requests:    m.requests,
 		TotalEvalNs: int64(m.totalEval),
 	})
@@ -339,6 +357,7 @@ func (m *modelStat) UnmarshalJSON(data []byte) error {
 	}
 	m.totalInput = j.TotalInput
 	m.totalOutput = j.TotalOutput
+	m.cachedInput = j.CachedInput
 	m.requests = j.Requests
 	m.totalEval = time.Duration(j.TotalEvalNs)
 	return nil
@@ -348,9 +367,10 @@ func (m *modelStat) UnmarshalJSON(data []byte) error {
 
 // dailyModelStatJSON is the serialization format for daily stats.
 type dailyModelStatJSON struct {
-	Input    int `json:"input_tokens"`
-	Output   int `json:"output_tokens"`
-	Requests int `json:"requests"`
+	Input       int `json:"input_tokens"`
+	Output      int `json:"output_tokens"`
+	CachedInput int `json:"cached_input_tokens"`
+	Requests    int `json:"requests"`
 }
 
 // buildDailyStats builds a map of date -> model -> DailyModelStats for the
@@ -396,6 +416,7 @@ func buildDailyStats(dailyStats map[string]*dailyModelStat) map[string]map[strin
 			InputTokens:  ds.input,
 			OutputTokens: ds.output,
 			TotalTokens:  ds.input + ds.output,
+			CachedInput:  ds.cachedInput,
 			Requests:     ds.requests,
 		}
 	}
@@ -417,9 +438,10 @@ func stringsIndex(s, substr string) int {
 // MarshalJSON implements json.Marshaler for dailyModelStat.
 func (d *dailyModelStat) MarshalJSON() ([]byte, error) {
 	return json.Marshal(dailyModelStatJSON{
-		Input:    d.input,
-		Output:   d.output,
-		Requests: d.requests,
+		Input:       d.input,
+		Output:      d.output,
+		CachedInput: d.cachedInput,
+		Requests:    d.requests,
 	})
 }
 
@@ -431,6 +453,7 @@ func (d *dailyModelStat) UnmarshalJSON(data []byte) error {
 	}
 	d.input = j.Input
 	d.output = j.Output
+	d.cachedInput = j.CachedInput
 	d.requests = j.Requests
 	return nil
 }
